@@ -260,6 +260,42 @@
         }
       },
       "required": ["predictedScore", "confidence", "riskLevel", "bestAlternativeWindow", "reason", "recommendation"]
+    },
+    "predictionCalibration": {
+      "type": "object",
+      "description": "Continuous calibration tracking prediction accuracy versus real user task outcomes",
+      "properties": {
+        "totalEvaluations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accuratePredictions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accuracyRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "meanCalibrationError": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "lastPredictionOutcome": {
+          "type": "string",
+          "enum": ["ACCURATE", "INACCURATE", "NONE"]
+        },
+        "lastPredictedScore": {
+          "type": ["integer", "null"]
+        },
+        "lastActualOutcome": {
+          "type": "string",
+          "enum": ["COMPLETED", "ABANDONED", "NONE"]
+        }
+      },
+      "required": ["totalEvaluations", "accuratePredictions", "accuracyRate", "meanCalibrationError", "lastPredictionOutcome"]
     }
   },
   "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]

@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UserModel",
+  "description": "Schema for continuous on-device user productivity model updated online after each task",
+  "type": "object",
+  "properties": {
+    "productivityProfile": {
+      "type": "object",
+      "description": "Current personal productivity profile summarizing temporal, context, and habit strengths"
+    },
+    "predictionCalibration": {
+      "type": "object",
+      "description": "Continuous calibration tracking prediction accuracy versus real user task outcomes",
+      "properties": {
+        "totalEvaluations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accuratePredictions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accuracyRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "meanCalibrationError": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "lastPredictionOutcome": {
+          "type": "string",
+          "enum": ["ACCURATE", "INACCURATE", "NONE"]
+        },
+        "lastPredictedScore": {
+          "type": ["integer", "null"]
+        },
+        "lastActualOutcome": {
+          "type": "string",
+          "enum": ["COMPLETED", "ABANDONED", "NONE"]
+        }
+      },
+      "required": [
+        "totalEvaluations",
+        "accuratePredictions",
+        "accuracyRate",
+        "meanCalibrationError",
+        "lastPredictionOutcome"
+      ]
+    },
+    "adaptiveRecommendations": {
+      "type": "array",
+      "description": "Ranked adaptive coaching recommendations"
+    },
+    "taskCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lastUpdated": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "productivityProfile",
+    "predictionCalibration",
+    "taskCount"
+  ]
+}

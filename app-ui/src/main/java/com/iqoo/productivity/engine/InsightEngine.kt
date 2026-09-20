@@ -69,6 +69,35 @@ data class TaskPrediction(
     val recommendation: String
 )
 
+data class PredictionCalibration(
+    val totalEvaluations: Int = 0,
+    val accuratePredictions: Int = 0,
+    val accuracyRate: Double = 0.0,
+    val meanCalibrationError: Double = 0.0,
+    val lastPredictionOutcome: String = "NONE", // ACCURATE, INACCURATE, NONE
+    val lastPredictedScore: Int? = null,
+    val lastActualOutcome: String = "NONE"      // COMPLETED, ABANDONED, NONE
+)
+
+data class UserModel(
+    val productivityProfile: ProductivityProfile,
+    val predictionCalibration: PredictionCalibration = PredictionCalibration(),
+    val adaptiveRecommendations: List<AdaptiveRecommendation> = emptyList(),
+    val tasks: List<Task> = emptyList(),
+    val contextSignals: List<ContextSignal> = emptyList(),
+    val taskCount: Int = 0,
+    val lastUpdated: Long = System.currentTimeMillis()
+) {
+    val bestFocusWindow: String get() = productivityProfile.bestFocusWindow
+    val bestTaskTypes: List<String> get() = productivityProfile.bestTaskTypes
+    val bestContext: String get() = productivityProfile.bestContext
+    val weakestFocusWindow: String get() = productivityProfile.weakestFocusWindow
+    val peakProductivityScore: Int get() = productivityProfile.peakProductivityScore
+    val averageCompletionRate: Double get() = productivityProfile.averageCompletionRate
+    val profileConfidence: String get() = productivityProfile.profileConfidence
+    val taskTypeAnalysis: List<TaskTypeAnalysis> get() = productivityProfile.taskTypeAnalysis
+}
+
 data class InsightResult(
     val peakHour: String,
     val procrastinationTrigger: String,
@@ -98,7 +127,8 @@ data class InsightResult(
         profileConfidence = "LOW"
     ),
     val adaptiveRecommendations: List<AdaptiveRecommendation> = emptyList(),
-    val taskPrediction: TaskPrediction? = null
+    val taskPrediction: TaskPrediction? = null,
+    val predictionCalibration: PredictionCalibration = PredictionCalibration()
 )
 
 /**
@@ -107,9 +137,16 @@ data class InsightResult(
  * Complies strictly with contracts/insight.schema.json.
  */
 class InsightEngine(
-    private val tasks: List<Task>,
-    private val contextSignals: List<ContextSignal> = emptyList()
+    private var tasks: List<Task>,
+    private var contextSignals: List<ContextSignal> = emptyList(),
+    var predictionCalibration: PredictionCalibration = PredictionCalibration()
 ) {
+
+    private fun getRecencyWeights(): List<Double> {
+        val n = tasks.size
+        if (n <= 1) return List(n) { 1.0 }
+        return List(n) { i -> Math.pow(0.94, (n - 1 - i).toDouble()) }
+    }
 
     fun analyze(
         targetTaskType: String? = null,
@@ -209,18 +246,38 @@ class InsightEngine(
         val completedTasks = tasks.filter { it.completedAt != null }
         if (completedTasks.isEmpty()) return "09:00 - 11:00 AM"
 
-        val hourCounts = mutableMapOf<Int, Int>()
+        val weights = getRecencyWeights()
+        val hourlyCompletions = mutableMapOf<Int, Double>()
         val calendar = Calendar.getInstance()
 
-        for (task in completedTasks) {
-            calendar.timeInMillis = task.createdAt
-            val hour = calendar.get(Calendar.HOUR_OF_DAY)
-            hourCounts[hour] = (hourCounts[hour] ?: 0) + 1
+        for (i in tasks.indices) {
+            val task = tasks[i]
+            if (task.completedAt != null) {
+                calendar.timeInMillis = task.createdAt
+                val hour = calendar.get(Calendar.HOUR_OF_DAY)
+                hourlyCompletions[hour] = (hourlyCompletions[hour] ?: 0.0) + weights[i]
+            }
         }
 
-        val peakStart = hourCounts.maxByOrNull { it.value }?.key ?: 9
-        val peakEnd = (peakStart + 2) % 24
-        return String.format("%02d:00 - %02d:00 (Peak focus completion)", peakStart, peakEnd)
+        if (hourlyCompletions.isEmpty()) return "09:00 - 11:00 AM"
+
+        var bestHour = 0
+        var maxVal = -1.0
+        var maxSingle = -1.0
+
+        for (h in 0 until 24) {
+            val hNext = (h + 1) % 24
+            val sumTwo = (hourlyCompletions[h] ?: 0.0) + (hourlyCompletions[hNext] ?: 0.0)
+            val single = hourlyCompletions[h] ?: 0.0
+            if (sumTwo > maxVal || (sumTwo == maxVal && single > maxSingle)) {
+                maxVal = sumTwo
+                maxSingle = single
+                bestHour = h
+            }
+        }
+
+        val peakEnd = (bestHour + 2) % 24
+        return String.format("%02d:00 - %02d:00 (Peak focus completion)", bestHour, peakEnd)
     }
 
     private fun detectProcrastinationTrigger(): String {
@@ -257,21 +314,37 @@ class InsightEngine(
     }
 
     private fun analyzeContexts(): List<ContextInsight> {
-        val contextMap = mutableMapOf<String, Triple<Int, Int, MutableList<Long>>>()
-        for (task in tasks) {
+        val weights = getRecencyWeights()
+        class CtxStats {
+            var total = 0
+            var completed = 0
+            var weightedTotal = 0.0
+            var weightedCompleted = 0.0
+            val durations = mutableListOf<Long>()
+        }
+        val statsMap = mutableMapOf<String, CtxStats>()
+        for (i in tasks.indices) {
+            val task = tasks[i]
+            val w = weights[i]
             val loc = task.location.ifBlank { "Home Office" }
-            val existing = contextMap.getOrPut(loc) { Triple(0, 0, mutableListOf()) }
-            val completedInc = if (task.completedAt != null) 1 else 0
-            existing.third.add(task.duration)
-            contextMap[loc] = Triple(existing.first + 1, existing.second + completedInc, existing.third)
+            val stat = statsMap.getOrPut(loc) { CtxStats() }
+            stat.total++
+            stat.weightedTotal += w
+            stat.durations.add(task.duration)
+            if (task.completedAt != null) {
+                stat.completed++
+                stat.weightedCompleted += w
+            }
         }
 
         val results = mutableListOf<ContextInsight>()
-        for ((loc, stats) in contextMap) {
-            val total = stats.first
-            val completed = stats.second
-            val rate = if (total > 0) Math.round((completed.toDouble() / total) * 1000.0) / 10.0 else 0.0
-            val avgDur = if (total > 0) Math.round((stats.third.sum().toDouble() / total) * 10.0) / 10.0 else 0.0
+        for ((loc, stats) in statsMap) {
+            val total = stats.total
+            val completed = stats.completed
+            val wTotal = stats.weightedTotal
+            val wCompleted = stats.weightedCompleted
+            val rate = if (wTotal > 0.0) Math.round((wCompleted / wTotal) * 1000.0) / 10.0 else 0.0
+            val avgDur = if (total > 0) Math.round((stats.durations.sum().toDouble() / total) * 10.0) / 10.0 else 0.0
             val status = when {
                 rate >= 75.0 -> "Optimal"
                 rate >= 50.0 -> "Moderate"
@@ -460,41 +533,50 @@ class InsightEngine(
     }
 
     private fun analyzeTaskTypes(): List<TaskTypeAnalysis> {
-        val tasksByType = tasks.groupBy { it.type }
-        val results = mutableListOf<TaskTypeAnalysis>()
+        val weights = getRecencyWeights()
+        val tasksByType = mutableMapOf<TaskType, MutableList<Pair<Task, Double>>>()
+        for (i in tasks.indices) {
+            val task = tasks[i]
+            val w = weights[i]
+            tasksByType.getOrPut(task.type) { mutableListOf() }.add(Pair(task, w))
+        }
 
-        for ((type, typeTasks) in tasksByType) {
-            val total = typeTasks.size
-            val completed = typeTasks.count { it.completedAt != null }
+        val results = mutableListOf<TaskTypeAnalysis>()
+        for ((type, list) in tasksByType) {
+            val total = list.size
+            val wTotal = list.sumOf { it.second }
+            val wCompleted = list.filter { it.first.completedAt != null }.sumOf { it.second }
+            val completed = list.count { it.first.completedAt != null }
             val failed = total - completed
-            val completionRate = if (total > 0) Math.round((completed.toDouble() / total) * 1000.0) / 10.0 else 0.0
-            val abandonRate = if (total > 0) Math.round((failed.toDouble() / total) * 1000.0) / 10.0 else 0.0
-            val avgDur = if (total > 0) Math.round((typeTasks.map { it.duration }.sum().toDouble() / total) * 10.0) / 10.0 else 0.0
+            val completionRate = if (wTotal > 0.0) Math.round((wCompleted / wTotal) * 1000.0) / 10.0 else 0.0
+            val abandonRate = if (wTotal > 0.0) Math.round(((wTotal - wCompleted) / wTotal) * 1000.0) / 10.0 else 0.0
+            val avgDur = if (total > 0) Math.round((list.map { it.first.duration }.sum().toDouble() / total) * 10.0) / 10.0 else 0.0
             val prodScore = ((completionRate * 0.7) + Math.min(1.0, avgDur / 3600.0) * 30.0).toInt().coerceIn(0, 100)
 
             var strongestWindow = "Insufficient data"
             if (total >= 2) {
                 val cal = Calendar.getInstance()
-                val hourlyAttempts = mutableMapOf<Int, Int>()
-                val hourlyCompleted = mutableMapOf<Int, Int>()
+                val hourlyAttempts = mutableMapOf<Int, Double>()
+                val hourlyCompleted = mutableMapOf<Int, Double>()
 
-                for (t in typeTasks) {
+                for ((t, w) in list) {
                     cal.timeInMillis = t.createdAt
                     val h = cal.get(Calendar.HOUR_OF_DAY)
-                    hourlyAttempts[h] = (hourlyAttempts[h] ?: 0) + 1
+                    hourlyAttempts[h] = (hourlyAttempts[h] ?: 0.0) + w
                     if (t.completedAt != null) {
-                        hourlyCompleted[h] = (hourlyCompleted[h] ?: 0) + 1
+                        hourlyCompleted[h] = (hourlyCompleted[h] ?: 0.0) + w
                     }
                 }
 
                 var bestHour: Int? = null
                 var bestHourRate = -1.0
                 for (h in 0 until 24) {
-                    val attInWindow = (hourlyAttempts[h] ?: 0) + (hourlyAttempts[(h + 1) % 24] ?: 0)
-                    val compInWindow = (hourlyCompleted[h] ?: 0) + (hourlyCompleted[(h + 1) % 24] ?: 0)
-                    if (attInWindow > 0 && compInWindow > 0) {
-                        val rate = compInWindow.toDouble() / attInWindow
-                        if (rate > bestHourRate) {
+                    val attInWindow = (hourlyAttempts[h] ?: 0.0) + (hourlyAttempts[(h + 1) % 24] ?: 0.0)
+                    val compInWindow = (hourlyCompleted[h] ?: 0.0) + (hourlyCompleted[(h + 1) % 24] ?: 0.0)
+                    if (attInWindow > 0.0 && compInWindow > 0.0) {
+                        val rate = compInWindow / attInWindow
+                        val prevBestAtt = bestHour?.let { (hourlyAttempts[it] ?: 0.0) + (hourlyAttempts[(it + 1) % 24] ?: 0.0) } ?: 0.0
+                        if (rate > bestHourRate || (rate == bestHourRate && attInWindow > prevBestAtt)) {
                             bestHourRate = rate
                             bestHour = h
                         }
@@ -587,11 +669,13 @@ class InsightEngine(
 
         val bestWindow = peakHour.split("(")[0].trim()
         val bestTypes = taskTypeAnalysis.filter { it.completionRate >= 70.0 && it.totalSessions >= 2 }.map { it.taskType }
-        val bestCtx = contextInsights.firstOrNull()?.context ?: "Home Office"
+        val bestCtx = contextInsights.firstOrNull { it.totalTasks >= 2 && it.status == "Optimal" }?.context ?: (contextInsights.firstOrNull()?.context ?: "Home Office")
         val weakestWindow = detectWeakestFocusWindow()
         val peakScore = heatmap.values.maxOrNull() ?: 0
-        val completedCount = tasks.count { it.completedAt != null }
-        val avgCompletion = if (total > 0) Math.round((completedCount.toDouble() / total) * 1000.0) / 10.0 else 0.0
+        val weights = getRecencyWeights()
+        val weightedCompleted = tasks.indices.filter { tasks[it].completedAt != null }.sumOf { weights[it] }
+        val totalWeight = weights.sum()
+        val avgCompletion = if (totalWeight > 0.0) Math.round((weightedCompleted / totalWeight) * 1000.0) / 10.0 else 0.0
 
         val fatigueScore = fatigue.second
         val fatiguePattern = when {
@@ -724,8 +808,10 @@ class InsightEngine(
     private fun calculateProductivityScore(): Int {
         val total = tasks.size
         if (total == 0) return 0
-        val completed = tasks.count { it.completedAt != null }
-        return ((completed.toDouble() / total) * 100).toInt().coerceIn(0, 100)
+        val weights = getRecencyWeights()
+        val weightedCompleted = tasks.indices.filter { tasks[it].completedAt != null }.sumOf { weights[it] }
+        val totalWeight = weights.sum()
+        return if (totalWeight > 0.0) ((weightedCompleted / totalWeight) * 100).toInt().coerceIn(0, 100) else 0
     }
 
     private fun calculateConfidence(): String {
@@ -748,22 +834,24 @@ class InsightEngine(
 
     private fun generateHourlyHeatmap(): Map<Int, Int> {
         val calendar = Calendar.getInstance()
-        val attempts = mutableMapOf<Int, Int>()
-        val completed = mutableMapOf<Int, Int>()
+        val weights = getRecencyWeights()
+        val attempts = mutableMapOf<Int, Double>()
+        val completed = mutableMapOf<Int, Double>()
 
-        for (task in tasks) {
+        for (i in tasks.indices) {
+            val task = tasks[i]
             calendar.timeInMillis = task.createdAt
             val hour = calendar.get(Calendar.HOUR_OF_DAY)
-            attempts[hour] = (attempts[hour] ?: 0) + 1
+            attempts[hour] = (attempts[hour] ?: 0.0) + weights[i]
             if (task.completedAt != null) {
-                completed[hour] = (completed[hour] ?: 0) + 1
+                completed[hour] = (completed[hour] ?: 0.0) + weights[i]
             }
         }
 
         return (0..23).associateWith { hour ->
-            val att = attempts[hour] ?: 0
-            val comp = completed[hour] ?: 0
-            if (att == 0) 0 else ((comp.toDouble() / att) * 100).toInt()
+            val att = attempts[hour] ?: 0.0
+            val comp = completed[hour] ?: 0.0
+            if (att == 0.0) 0 else ((comp / att) * 100).toInt()
         }
     }
 
@@ -1039,4 +1127,109 @@ class InsightEngine(
             recommendation = recommendation
         )
     }
+
+    fun updateUserModel(newTask: Task, context: ContextSignal? = null, predictedScore: Int? = null): UserModel {
+        val prevModel = UserModel(
+            productivityProfile = this.analyze().productivityProfile,
+            predictionCalibration = this.predictionCalibration,
+            adaptiveRecommendations = this.analyze().adaptiveRecommendations,
+            tasks = this.tasks,
+            contextSignals = this.contextSignals,
+            taskCount = this.tasks.size
+        )
+        val updated = com.iqoo.productivity.engine.updateUserModel(prevModel, newTask, context, predictedScore)
+        this.tasks = updated.tasks
+        this.contextSignals = updated.contextSignals
+        this.predictionCalibration = updated.predictionCalibration
+        return updated
+    }
+}
+
+fun predictTaskReadiness(
+    tasks: List<Task>,
+    contextSignals: List<ContextSignal> = emptyList(),
+    taskType: String = "coding",
+    currentHour: Int? = null,
+    currentContext: String? = null,
+    recentScreenDuration: Long? = null
+): TaskPrediction {
+    val engine = InsightEngine(tasks, contextSignals)
+    return engine.predictTaskReadiness(taskType, currentHour, currentContext, recentScreenDuration)
+}
+
+fun updateUserModel(
+    previousModel: UserModel?,
+    newTask: Task,
+    context: ContextSignal? = null,
+    predictedScore: Int? = null
+): UserModel {
+    val prevTasks = previousModel?.tasks ?: emptyList()
+    val prevSignals = previousModel?.contextSignals ?: emptyList()
+    val prevCalib = previousModel?.predictionCalibration ?: PredictionCalibration()
+
+    // 2. Prediction vs Actual Outcome Tracking
+    val predScore: Int? = if (predictedScore != null) {
+        predictedScore
+    } else if (prevTasks.isNotEmpty()) {
+        val prevEngine = InsightEngine(prevTasks, prevSignals)
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = newTask.createdAt
+        val tHour = cal.get(Calendar.HOUR_OF_DAY)
+        val tLoc = newTask.location.ifBlank { context?.location ?: "Home Office" }
+        val tScreen = context?.screenOnDuration ?: 0L
+        val predRes = prevEngine.predictTaskReadiness(newTask.type.name.lowercase(), tHour, tLoc, tScreen)
+        predRes.predictedScore
+    } else {
+        null
+    }
+
+    val isCompleted = newTask.completedAt != null
+    val actualScore = if (isCompleted) 100 else 0
+    val actualOutcomeStr = if (isCompleted) "COMPLETED" else "ABANDONED"
+
+    val newCalib: PredictionCalibration
+    if (predScore != null) {
+        val wasAccurate = (predScore >= 50 && isCompleted) || (predScore < 50 && !isCompleted)
+        val outcomeStr = if (wasAccurate) "ACCURATE" else "INACCURATE"
+        val error = Math.abs(predScore - actualScore).toDouble()
+
+        val totEval = prevCalib.totalEvaluations + 1
+        val accCount = prevCalib.accuratePredictions + (if (wasAccurate) 1 else 0)
+        val accRate = Math.round((accCount.toDouble() / totEval) * 1000.0) / 10.0
+        val prevMeanErr = prevCalib.meanCalibrationError
+        val newMeanErr = Math.round((((prevMeanErr * (totEval - 1)) + error) / totEval) * 10.0) / 10.0
+
+        newCalib = PredictionCalibration(
+            totalEvaluations = totEval,
+            accuratePredictions = accCount,
+            accuracyRate = accRate,
+            meanCalibrationError = newMeanErr,
+            lastPredictionOutcome = outcomeStr,
+            lastPredictedScore = predScore,
+            lastActualOutcome = actualOutcomeStr
+        )
+    } else {
+        newCalib = prevCalib.copy(
+            lastActualOutcome = actualOutcomeStr
+        )
+    }
+
+    // 3. Update task list and context signals
+    val updatedTasks = prevTasks + listOf(newTask)
+    val updatedSignals = if (context != null) prevSignals + listOf(context) else prevSignals
+
+    // 4. Recompute profile with recency weighting
+    val engine = InsightEngine(updatedTasks, updatedSignals, newCalib)
+    val insights = engine.analyze()
+    val profile = insights.productivityProfile
+
+    return UserModel(
+        productivityProfile = profile,
+        predictionCalibration = newCalib,
+        adaptiveRecommendations = insights.adaptiveRecommendations,
+        tasks = updatedTasks,
+        contextSignals = updatedSignals,
+        taskCount = updatedTasks.size,
+        lastUpdated = System.currentTimeMillis()
+    )
 }

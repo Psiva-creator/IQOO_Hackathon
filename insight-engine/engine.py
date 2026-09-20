@@ -4,14 +4,35 @@ Context-Aware Productivity, Fatigue, Personal Productivity Profile & Adaptive Re
 Pure statistical and heuristic analytics running 100% on-device.
 """
 
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 class InsightEngine:
-    def __init__(self, tasks: List[Dict[str, Any]], context_signals: Optional[List[Dict[str, Any]]] = None):
+    def __init__(
+        self,
+        tasks: List[Dict[str, Any]],
+        context_signals: Optional[List[Dict[str, Any]]] = None,
+        prediction_calibration: Optional[Dict[str, Any]] = None
+    ):
         self.tasks = tasks or []
         self.context_signals = context_signals or []
+        self.prediction_calibration = prediction_calibration or {
+            "totalEvaluations": 0,
+            "accuratePredictions": 0,
+            "accuracyRate": 0.0,
+            "meanCalibrationError": 0.0,
+            "lastPredictionOutcome": "NONE",
+            "lastPredictedScore": None,
+            "lastActualOutcome": "NONE"
+        }
+
+    def _get_recency_weights(self) -> List[float]:
+        n = len(self.tasks)
+        if n <= 1:
+            return [1.0] * n
+        return [0.94 ** (n - 1 - i) for i in range(n)]
 
     def analyze(
         self,
@@ -63,7 +84,8 @@ class InsightEngine:
                         "priority": "LOW",
                         "impact": "LOW"
                     }
-                ]
+                ],
+                "predictionCalibration": self.prediction_calibration
             }
             if target_task_type is not None:
                 res["taskPrediction"] = self.predict_task_readiness(
@@ -104,7 +126,8 @@ class InsightEngine:
             "contextInsights": context_insights,
             "distractionSensitivity": distraction,
             "productivityProfile": profile,
-            "adaptiveRecommendations": adaptive_recs
+            "adaptiveRecommendations": adaptive_recs,
+            "predictionCalibration": self.prediction_calibration
         }
 
         if target_task_type is not None:
@@ -134,16 +157,18 @@ class InsightEngine:
         return "HIGH"
 
     def _detect_peak_hour(self) -> str:
-        hourly_completions = defaultdict(int)
-        for task in self.tasks:
+        weights = self._get_recency_weights()
+        hourly_completions = defaultdict(float)
+        for i, task in enumerate(self.tasks):
             if task.get("completedAt"):
                 dt = datetime.fromtimestamp(task["createdAt"] / 1000)
-                hourly_completions[dt.hour] += 1
+                hourly_completions[dt.hour] += weights[i]
 
         if not hourly_completions:
             return "09:00 - 11:00 AM"
 
-        best_hour = max(hourly_completions.items(), key=lambda x: x[1])[0]
+        # 2-hour window (h, h+1) to match returned 2-hour span
+        best_hour = max(range(24), key=lambda h: (hourly_completions[h] + hourly_completions[(h + 1) % 24], hourly_completions[h]))
         end_hour = (best_hour + 2) % 24
         return f"{best_hour:02d}:00 - {end_hour:02d}:00 (Peak focus completion)"
 
@@ -171,20 +196,26 @@ class InsightEngine:
         return "Low afternoon completion on complex non-routine tasks"
 
     def _analyze_contexts(self) -> List[Dict[str, Any]]:
-        context_map = defaultdict(lambda: {"total": 0, "completed": 0, "durations": []})
-        for task in self.tasks:
+        weights = self._get_recency_weights()
+        context_map = defaultdict(lambda: {"total": 0, "completed": 0, "weighted_total": 0.0, "weighted_completed": 0.0, "durations": []})
+        for i, task in enumerate(self.tasks):
             loc = task.get("location") or "Home Office"
+            w = weights[i]
             context_map[loc]["total"] += 1
+            context_map[loc]["weighted_total"] += w
             dur = task.get("duration", 0)
             context_map[loc]["durations"].append(dur)
             if task.get("completedAt"):
                 context_map[loc]["completed"] += 1
+                context_map[loc]["weighted_completed"] += w
 
         results = []
         for loc, stats in context_map.items():
             total = stats["total"]
             completed = stats["completed"]
-            rate = round((completed / total) * 100, 1) if total > 0 else 0.0
+            w_total = stats["weighted_total"]
+            w_completed = stats["weighted_completed"]
+            rate = round((w_completed / w_total) * 100, 1) if w_total > 0 else 0.0
             avg_dur = round(sum(stats["durations"]) / total, 1) if total > 0 else 0.0
             if rate >= 75.0:
                 status = "Optimal"
@@ -372,31 +403,37 @@ class InsightEngine:
         }
 
     def _analyze_task_types(self) -> List[Dict[str, Any]]:
+        weights = self._get_recency_weights()
         tasks_by_type = defaultdict(list)
-        for task in self.tasks:
+        weights_by_type = defaultdict(list)
+        for i, task in enumerate(self.tasks):
             t_type = task.get("type", "other")
             tasks_by_type[t_type].append(task)
+            weights_by_type[t_type].append(weights[i])
 
         analysis_list = []
         for t_type, type_tasks in tasks_by_type.items():
+            t_weights = weights_by_type[t_type]
             total = len(type_tasks)
+            w_total = sum(t_weights)
+            w_completed = sum(w for t, w in zip(type_tasks, t_weights) if t.get("completedAt"))
             completed = sum(1 for t in type_tasks if t.get("completedAt"))
             failed = total - completed
-            completion_rate = round((completed / total) * 100, 1) if total > 0 else 0.0
-            abandonment_rate = round((failed / total) * 100, 1) if total > 0 else 0.0
+            completion_rate = round((w_completed / w_total) * 100, 1) if w_total > 0 else 0.0
+            abandonment_rate = round(((w_total - w_completed) / w_total) * 100, 1) if w_total > 0 else 0.0
             avg_dur = round(sum(t.get("duration", 0) for t in type_tasks) / total, 1) if total > 0 else 0.0
             prod_score = int(round(completion_rate * 0.7 + min(1.0, avg_dur / 3600.0) * 30))
             prod_score = max(0, min(100, prod_score))
 
-            # Detect strongest time window for this specific task type
+            # Detect strongest time window for this specific task type with recency weights
             strongest_window = "Insufficient data"
             if total >= 2:
-                hourly_success = defaultdict(lambda: {"attempts": 0, "completed": 0})
-                for t in type_tasks:
+                hourly_success = defaultdict(lambda: {"attempts": 0.0, "completed": 0.0})
+                for t, w in zip(type_tasks, t_weights):
                     h = datetime.fromtimestamp(t["createdAt"] / 1000).hour
-                    hourly_success[h]["attempts"] += 1
+                    hourly_success[h]["attempts"] += w
                     if t.get("completedAt"):
-                        hourly_success[h]["completed"] += 1
+                        hourly_success[h]["completed"] += w
 
                 best_hour = None
                 best_hour_rate = -1.0
@@ -483,15 +520,17 @@ class InsightEngine:
         best_types = [t["taskType"] for t in task_type_analysis if t["completionRate"] >= 70.0 and t["totalSessions"] >= 2]
 
         # 3. Best Context
-        best_ctx_name = context_insights[0]["context"] if context_insights else "Home Office"
+        best_ctx_name = next((c["context"] for c in context_insights if c["totalTasks"] >= 2 and c["status"] == "Optimal"), None) or (context_insights[0]["context"] if context_insights else "Home Office")
 
         # 4. Weakest Focus Window
         weakest_window = self._detect_weakest_focus_window()
 
         # 5. Peak Productivity Score & Average Completion Rate
         peak_score = max(heatmap.values(), default=0)
-        completed_count = sum(1 for t in self.tasks if t.get("completedAt"))
-        avg_completion = round((completed_count / total) * 100, 1)
+        weights = self._get_recency_weights()
+        weighted_completed = sum(weights[i] for i, t in enumerate(self.tasks) if t.get("completedAt"))
+        total_weight = sum(weights)
+        avg_completion = round((weighted_completed / total_weight) * 100, 1) if total_weight > 0 else 0.0
 
         # 6. Fatigue Pattern
         if fatigue["score"] >= 65:
@@ -612,18 +651,21 @@ class InsightEngine:
         total = len(self.tasks)
         if total == 0:
             return 0
-        completed = sum(1 for t in self.tasks if t.get("completedAt"))
-        return max(0, min(100, int((completed / total) * 100)))
+        weights = self._get_recency_weights()
+        weighted_completed = sum(weights[i] for i, t in enumerate(self.tasks) if t.get("completedAt"))
+        total_weight = sum(weights)
+        return max(0, min(100, int((weighted_completed / total_weight) * 100)))
 
     def _generate_hourly_heatmap(self) -> Dict[str, int]:
+        weights = self._get_recency_weights()
         heatmap = {}
-        hour_buckets = defaultdict(lambda: {"attempts": 0, "completed": 0})
-        for task in self.tasks:
+        hour_buckets = defaultdict(lambda: {"attempts": 0.0, "completed": 0.0})
+        for i, task in enumerate(self.tasks):
             dt = datetime.fromtimestamp(task["createdAt"] / 1000)
             h = dt.hour
-            hour_buckets[h]["attempts"] += 1
+            hour_buckets[h]["attempts"] += weights[i]
             if task.get("completedAt"):
-                hour_buckets[h]["completed"] += 1
+                hour_buckets[h]["completed"] += weights[i]
 
         for h in range(24):
             b = hour_buckets[h]
@@ -874,6 +916,21 @@ class InsightEngine:
             "recommendation": recommendation
         }
 
+    def update_user_model(self, new_task: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Update current engine state with a new task outcome and context signal."""
+        prev_model = {
+            "tasks": self.tasks,
+            "contextSignals": self.context_signals,
+            "predictionCalibration": self.prediction_calibration
+        }
+        res = update_user_model(prev_model, new_task, context)
+        self.tasks = res["tasks"]
+        self.context_signals = res["contextSignals"]
+        self.prediction_calibration = res["predictionCalibration"]
+        return res
+
+    updateUserModel = update_user_model
+
 def predict_task_readiness(
     tasks: List[Dict[str, Any]],
     context_signals: Optional[List[Dict[str, Any]]] = None,
@@ -890,6 +947,127 @@ def predict_task_readiness(
         current_context=current_context,
         recent_screen_duration=recent_screen_duration
     )
+
+def update_user_model(
+    previous_model: Optional[Dict[str, Any]],
+    new_task: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Continuous Personalization / Online Learning.
+    Updates the on-device user model and productivity profile after each task
+    outcome (completion or abandonment) with exponential recency weighting and
+    prediction calibration tracking.
+    """
+    # 1. Extract previous state
+    if previous_model is None or not isinstance(previous_model, dict):
+        prev_tasks = []
+        prev_signals = []
+        prev_calib = {
+            "totalEvaluations": 0,
+            "accuratePredictions": 0,
+            "accuracyRate": 0.0,
+            "meanCalibrationError": 0.0,
+            "lastPredictionOutcome": "NONE",
+            "lastPredictedScore": None,
+            "lastActualOutcome": "NONE"
+        }
+    else:
+        prev_tasks = list(previous_model.get("tasks", []))
+        prev_signals = list(previous_model.get("contextSignals", []))
+        prev_calib = dict(previous_model.get("predictionCalibration", {
+            "totalEvaluations": 0,
+            "accuratePredictions": 0,
+            "accuracyRate": 0.0,
+            "meanCalibrationError": 0.0,
+            "lastPredictionOutcome": "NONE",
+            "lastPredictedScore": None,
+            "lastActualOutcome": "NONE"
+        }))
+
+    # 2. Prediction vs Actual Outcome Tracking
+    pred_score = None
+    if "predictedScore" in new_task and new_task["predictedScore"] is not None:
+        pred_score = int(new_task["predictedScore"])
+    elif prev_tasks:
+        prev_engine = InsightEngine(prev_tasks, prev_signals)
+        t_type = new_task.get("type", "coding")
+        t_hour = datetime.fromtimestamp(new_task["createdAt"] / 1000).hour if "createdAt" in new_task else datetime.now().hour
+        t_loc = new_task.get("location") or (context.get("location") if context else "Home Office")
+        t_screen = context.get("screenOnDuration", 0) if context else 0
+        pred_res = prev_engine.predict_task_readiness(t_type, t_hour, t_loc, t_screen)
+        pred_score = pred_res["predictedScore"]
+
+    is_completed = (new_task.get("completedAt") is not None) and (new_task.get("status") != "abandoned")
+    actual_score = 100 if is_completed else 0
+    actual_outcome_str = "COMPLETED" if is_completed else "ABANDONED"
+
+    if pred_score is not None:
+        was_accurate = (pred_score >= 50 and is_completed) or (pred_score < 50 and not is_completed)
+        outcome_str = "ACCURATE" if was_accurate else "INACCURATE"
+        error = abs(pred_score - actual_score)
+
+        tot_eval = prev_calib.get("totalEvaluations", 0) + 1
+        acc_count = prev_calib.get("accuratePredictions", 0) + (1 if was_accurate else 0)
+        acc_rate = round((acc_count / tot_eval) * 100.0, 1)
+        prev_mean_err = prev_calib.get("meanCalibrationError", 0.0)
+        new_mean_err = round(((prev_mean_err * (tot_eval - 1)) + error) / tot_eval, 1)
+
+        new_calib = {
+            "totalEvaluations": tot_eval,
+            "accuratePredictions": acc_count,
+            "accuracyRate": acc_rate,
+            "meanCalibrationError": new_mean_err,
+            "lastPredictionOutcome": outcome_str,
+            "lastPredictedScore": pred_score,
+            "lastActualOutcome": actual_outcome_str
+        }
+    else:
+        new_calib = dict(prev_calib)
+        new_calib["lastActualOutcome"] = actual_outcome_str
+
+    # 3. Update task list and context signals
+    updated_tasks = prev_tasks + [new_task]
+    updated_signals = prev_signals + ([context] if context else [])
+
+    # 4. Recompute profile with recency weighting
+    engine = InsightEngine(updated_tasks, updated_signals, prediction_calibration=new_calib)
+    insights = engine.analyze()
+    profile = insights["productivityProfile"]
+
+    # 5. Build and return comprehensive updated user model
+    user_model = {
+        "productivityProfile": profile,
+        "predictionCalibration": new_calib,
+        "adaptiveRecommendations": insights["adaptiveRecommendations"],
+        "tasks": updated_tasks,
+        "contextSignals": updated_signals,
+        "taskCount": len(updated_tasks),
+        "lastUpdated": int(time.time() * 1000),
+        # Direct shortcuts for profile access
+        "bestFocusWindow": profile["bestFocusWindow"],
+        "bestTaskTypes": profile["bestTaskTypes"],
+        "bestContext": profile["bestContext"],
+        "weakestFocusWindow": profile["weakestFocusWindow"],
+        "peakProductivityScore": profile["peakProductivityScore"],
+        "averageCompletionRate": profile["averageCompletionRate"],
+        "profileConfidence": profile["profileConfidence"],
+        "taskTypeAnalysis": profile["taskTypeAnalysis"],
+        "fatiguePattern": profile["fatiguePattern"],
+        "distractionPattern": profile["distractionPattern"],
+        "productivityScore": insights["productivityScore"],
+        "confidenceLevel": insights["confidenceLevel"],
+        "recommendation": insights["recommendation"],
+        "fatigueLevel": insights["fatigueLevel"],
+        "fatigueScore": insights["fatigueScore"],
+        "explanation": insights["explanation"],
+        "hourlyHeatmap": insights["hourlyHeatmap"],
+        "contextInsights": insights["contextInsights"],
+        "distractionSensitivity": insights["distractionSensitivity"]
+    }
+    return user_model
+
+updateUserModel = update_user_model
 
 if __name__ == "__main__":
     import json, os

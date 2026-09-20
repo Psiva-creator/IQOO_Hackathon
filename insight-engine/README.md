@@ -203,11 +203,48 @@ S_{\text{predicted}} &= \text{clamp}\Big(S_{\text{base}} + S_{\text{task}} + S_{
 
 ---
 
+## 🔄 Continuous Personalization & Online Learning
+
+The engine adapts dynamically with every completed or abandoned task via `updateUserModel(previousModel, newTask, context)`. It requires **zero cloud calls and zero heavy neural network retraining**, operating with sub-millisecond execution time directly on-device.
+
+### 1. Exponential Recency Weighting
+Historical sessions decay exponentially according to their ordinal position relative to the latest session:
+$$w_i = \gamma^{N - 1 - i}, \quad \gamma = 0.94, \quad i \in [0, N-1]$$
+* **Half-life:** $\approx 11$ tasks. Recent behavior has significantly greater influence than older behavior.
+* **Habit Shifts:** If a user shifts from morning deep work to late afternoon blocks or moves from a home office to a library, 5–6 consecutive recent sessions cleanly transition the peak focus window and optimal context.
+
+### 2. Prediction vs. Actual Outcome Calibration (`predictionCalibration`)
+For every newly submitted task, the engine measures its forecast against reality:
+* **Outcome Binary:**
+  * Accurate if ($S_{\text{predicted}} \ge 50$ and task completed) OR ($S_{\text{predicted}} < 50$ and task abandoned).
+  * Inaccurate if ($S_{\text{predicted}} \ge 50$ and task abandoned) OR ($S_{\text{predicted}} < 50$ and task completed).
+* **Calibration Metrics:**
+  * `accuracyRate`: $\frac{\text{accuratePredictions}}{\text{totalEvaluations}} \times 100$
+  * `meanCalibrationError`: Running mean of $|S_{\text{predicted}} - S_{\text{actual}}|$, where $S_{\text{actual}} \in \{0, 100\}$.
+  * `lastPredictionOutcome`: `ACCURATE`, `INACCURATE`, or `NONE`.
+
+### 3. API Signature
+```python
+# Python
+updated_model = update_user_model(previous_model, new_task, context)
+# Or on the engine instance:
+engine.update_user_model(new_task, context)
+```
+
+```kotlin
+// Kotlin
+val updatedModel: UserModel = updateUserModel(previousModel, newTask, contextSignal)
+// Or on the engine instance:
+engine.updateUserModel(newTask, contextSignal)
+```
+
+---
+
 ## ⚖️ Limitations & Methodology
 
-* **Deterministic Statistical/Heuristic Engine:** All profile attributes, recommendations, and predictions are derived via transparent mathematical heuristics (sliding temporal histograms, ratio drops, duration variance).
+* **Deterministic Statistical/Heuristic Engine:** All profile attributes, recommendations, predictions, and calibration updates are derived via transparent mathematical heuristics (exponential decay histograms, calibration errors, ratio drops, duration variance).
 * **No Cloud AI / Zero Data Leakage:** This is **not** a cloud LLM or black-box neural network; it runs entirely within Android CPU processes with $< 20\text{ms}$ calculation latency.
-* **Sample Size Sensitivity:** Profile conclusions are gated by sample count. When $< 5$ sessions exist, `confidence` drops to `LOW` and recommendations default to data collection calibration rather than false conclusions.
+* **Sample Size Sensitivity & Cold-Start:** When `previousModel` is `null` or $< 5$ sessions exist, `profileConfidence` defaults to `LOW` and recommendations calibrate baseline readiness without making unfounded assumptions.
 
 ---
 
@@ -217,7 +254,7 @@ Run test suite:
 ```bash
 python3 -m unittest test_engine.py -v
 ```
-21 unit tests cover:
+**29 comprehensive unit tests** cover:
 1. Backward compatibility for legacy contracts
 2. Peak morning hour detection
 3. Procrastination trigger detection
@@ -230,11 +267,20 @@ python3 -m unittest test_engine.py -v
 10. Conflicting patterns & high-switching behavior
 11. High fatigue detection & adaptive recommendations
 12. Recommendation generation & priority sorting
-13. **High prediction (optimal conditions)**
-14. **Low prediction (suboptimal context & timing)**
-15. **Insufficient data prediction (cold start, sparse, unseen task types)**
-16. **Context change prediction (Home Office vs Cafe comparison)**
-17. **Fatigue & screen strain impact on prediction**
-18. **`analyze()` backward-compatible target task prediction**
-19. **Module-level convenience prediction helper**
+13. High prediction (optimal conditions)
+14. Low prediction (suboptimal context & timing)
+15. Insufficient data prediction (cold start, sparse, unseen task types)
+16. Context change prediction (Home Office vs Cafe comparison)
+17. Fatigue & screen strain impact on prediction
+18. `analyze()` backward-compatible target task prediction
+19. Module-level convenience prediction helper
+20. **Online learning on completed task**
+21. **Online learning on abandoned task**
+22. **Online learning habit shift (changing peak focus hours)**
+23. **Online learning context shift (changing location preferences)**
+24. **Prediction calibration correct forecast**
+25. **Prediction calibration wrong forecast**
+26. **Cold start with `None` previous model**
+27. **Repeated sequential updates stability**
+
 

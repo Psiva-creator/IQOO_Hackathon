@@ -318,5 +318,247 @@ class TestInsightEngine(unittest.TestCase):
         self.assertEqual(pred["taskType"], "coding")
         self.assertGreaterEqual(pred["predictedScore"], 70)
 
+    # 6. Continuous Personalization / Online Learning Tests
+    def test_online_learning_completed_task(self):
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+        initial_model = {
+            "tasks": self.tasks,
+            "contextSignals": self.signals
+        }
+        new_task = {
+            "id": "new-comp-1",
+            "title": "Optimizing DB Queries",
+            "type": "coding",
+            "createdAt": now_ms - 3600000,
+            "completedAt": now_ms,
+            "duration": 3600,
+            "location": "Home Office",
+            "priority": "HIGH",
+            "predictedScore": 85
+        }
+        new_ctx = {
+            "timestamp": now_ms,
+            "appCategory": "Productivity",
+            "location": "Home Office",
+            "screenOnDuration": 1800
+        }
+
+        updated = update_user_model(initial_model, new_task, new_ctx)
+        self.assertEqual(updated["taskCount"], len(self.tasks) + 1)
+        self.assertEqual(len(updated["tasks"]), len(self.tasks) + 1)
+        self.assertEqual(len(updated["contextSignals"]), len(self.signals) + 1)
+        self.assertEqual(updated["predictionCalibration"]["lastActualOutcome"], "COMPLETED")
+        self.assertEqual(updated["predictionCalibration"]["lastPredictionOutcome"], "ACCURATE")
+        self.assertIn("productivityProfile", updated)
+
+    def test_online_learning_abandoned_task(self):
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+        initial_model = {
+            "tasks": self.tasks,
+            "contextSignals": self.signals
+        }
+        new_task = {
+            "id": "new-aband-1",
+            "title": "Unfinished Spec Drafting",
+            "type": "writing",
+            "createdAt": now_ms - 1800000,
+            "completedAt": None,
+            "status": "abandoned",
+            "duration": 1800,
+            "location": "Cafe",
+            "priority": "LOW",
+            "predictedScore": 35
+        }
+
+        updated = update_user_model(initial_model, new_task)
+        self.assertEqual(updated["predictionCalibration"]["lastActualOutcome"], "ABANDONED")
+        # Score 35 (< 50) and abandoned -> accurate risk forecast
+        self.assertEqual(updated["predictionCalibration"]["lastPredictionOutcome"], "ACCURATE")
+        writing_stat = next(t for t in updated["taskTypeAnalysis"] if t["taskType"] == "writing")
+        self.assertGreater(writing_stat["abandonmentRate"], 0)
+
+    def test_online_learning_changing_peak_hours(self):
+        from engine import update_user_model
+        now_dt = datetime.now()
+        # Seed 5 completed tasks at 09:00 AM (older)
+        old_tasks = []
+        base_time = now_dt.replace(hour=9, minute=0, second=0, microsecond=0) - timedelta(days=5)
+        for i in range(5):
+            t_created = int((base_time + timedelta(days=i)).timestamp() * 1000)
+            old_tasks.append({
+                "id": f"old-{i}",
+                "title": f"Morning session {i}",
+                "type": "coding",
+                "createdAt": t_created,
+                "completedAt": t_created + 3600000,
+                "duration": 3600,
+                "location": "Home Office",
+                "priority": "HIGH"
+            })
+
+        model = {"tasks": old_tasks, "contextSignals": []}
+        eng_before = InsightEngine(old_tasks)
+        self.assertIn("09:00", eng_before.analyze()["peakHour"])
+
+        # Feed 6 new consecutive tasks in the late afternoon (16:00) with recent timestamps
+        afternoon_time = now_dt.replace(hour=16, minute=0, second=0, microsecond=0)
+        for i in range(6):
+            t_created = int((afternoon_time + timedelta(days=i)).timestamp() * 1000)
+            new_task = {
+                "id": f"shift-pm-{i}",
+                "title": f"Afternoon work {i}",
+                "type": "coding",
+                "createdAt": t_created,
+                "completedAt": t_created + 3600000,
+                "duration": 3600,
+                "location": "Home Office",
+                "priority": "MEDIUM"
+            }
+            model = update_user_model(model, new_task)
+
+        # Recency weighting should shift peak window to 16:00
+        self.assertIn("16:00", model["bestFocusWindow"])
+
+    def test_online_learning_changing_context_preference(self):
+        from engine import update_user_model
+        now_dt = datetime.now()
+        # Start with Home Office having 2 tasks
+        tasks = [
+            {
+                "id": "h1",
+                "title": "Home Task 1",
+                "type": "coding",
+                "createdAt": int((now_dt - timedelta(days=3)).timestamp() * 1000),
+                "completedAt": int((now_dt - timedelta(days=3)).timestamp() * 1000) + 3600000,
+                "duration": 3600,
+                "location": "Home Office",
+                "priority": "HIGH"
+            },
+            {
+                "id": "h2",
+                "title": "Home Task 2",
+                "type": "coding",
+                "createdAt": int((now_dt - timedelta(days=2)).timestamp() * 1000),
+                "completedAt": None,
+                "duration": 1800,
+                "location": "Home Office",
+                "priority": "HIGH"
+            }
+        ]
+        model = {"tasks": tasks, "contextSignals": []}
+
+        # User starts working at "Library" with 4 consecutive completed tasks
+        for i in range(4):
+            t_created = int((now_dt - timedelta(hours=10 - i*2)).timestamp() * 1000)
+            new_task = {
+                "id": f"lib-{i}",
+                "title": f"Library Session {i}",
+                "type": "coding",
+                "createdAt": t_created,
+                "completedAt": t_created + 3600000,
+                "duration": 3600,
+                "location": "Library",
+                "priority": "HIGH"
+            }
+            model = update_user_model(model, new_task)
+
+        # Library should become the bestContext (100% completion across 4 tasks)
+        self.assertEqual(model["bestContext"], "Library")
+
+    def test_online_learning_prediction_correct(self):
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+        # Task with predicted score 80 and completed -> accurate
+        new_task = {
+            "id": "pred-corr-1",
+            "title": "Routine Coding",
+            "type": "coding",
+            "createdAt": now_ms - 3600000,
+            "completedAt": now_ms,
+            "duration": 3600,
+            "location": "Home Office",
+            "priority": "HIGH",
+            "predictedScore": 80
+        }
+        model = update_user_model(None, new_task)
+        calib = model["predictionCalibration"]
+        self.assertEqual(calib["totalEvaluations"], 1)
+        self.assertEqual(calib["accuratePredictions"], 1)
+        self.assertEqual(calib["accuracyRate"], 100.0)
+        self.assertEqual(calib["meanCalibrationError"], 20.0) # |80 - 100|
+        self.assertEqual(calib["lastPredictionOutcome"], "ACCURATE")
+
+    def test_online_learning_prediction_wrong(self):
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+        # Task with high predicted score 85 but abandoned -> inaccurate
+        new_task = {
+            "id": "pred-wrong-1",
+            "title": "Failed Coding Block",
+            "type": "coding",
+            "createdAt": now_ms - 3600000,
+            "completedAt": None,
+            "duration": 1200,
+            "location": "Cafe",
+            "priority": "HIGH",
+            "predictedScore": 85
+        }
+        model = update_user_model(None, new_task)
+        calib = model["predictionCalibration"]
+        self.assertEqual(calib["totalEvaluations"], 1)
+        self.assertEqual(calib["accuratePredictions"], 0)
+        self.assertEqual(calib["accuracyRate"], 0.0)
+        self.assertEqual(calib["meanCalibrationError"], 85.0) # |85 - 0|
+        self.assertEqual(calib["lastPredictionOutcome"], "INACCURATE")
+
+    def test_online_learning_cold_start(self):
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+        first_task = {
+            "id": "cold-1",
+            "title": "First Ever Task",
+            "type": "reading",
+            "createdAt": now_ms - 1800000,
+            "completedAt": now_ms,
+            "duration": 1800,
+            "location": "Library",
+            "priority": "LOW"
+        }
+        # Passing None as previous_model
+        model = update_user_model(None, first_task)
+        self.assertIsNotNone(model)
+        self.assertEqual(model["taskCount"], 1)
+        self.assertEqual(model["profileConfidence"], "LOW")
+        self.assertEqual(model["bestFocusWindow"], "Insufficient Data")
+        self.assertEqual(model["predictionCalibration"]["totalEvaluations"], 0)
+
+    def test_online_learning_repeated_updates(self):
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+        model = None
+        for i in range(10):
+            task = {
+                "id": f"seq-{i}",
+                "title": f"Task {i}",
+                "type": "coding" if i % 2 == 0 else "meeting",
+                "createdAt": now_ms + i * 3600000,
+                "completedAt": (now_ms + i * 3600000 + 1800000) if i % 3 != 0 else None,
+                "duration": 1800,
+                "location": "Home Office",
+                "priority": "MEDIUM",
+                "predictedScore": 70 if i % 3 != 0 else 30
+            }
+            model = update_user_model(model, task)
+
+        self.assertEqual(model["taskCount"], 10)
+        self.assertEqual(len(model["tasks"]), 10)
+        calib = model["predictionCalibration"]
+        self.assertEqual(calib["totalEvaluations"], 10)
+        self.assertGreaterEqual(calib["accuracyRate"], 80.0)
+        self.assertLessEqual(calib["meanCalibrationError"], 35.0)
+
 if __name__ == "__main__":
     unittest.main()
+
