@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskPredictionOutput",
+  "description": "Output schema for the 'Should I do this task now?' predictive productivity assessment",
+  "type": "object",
+  "properties": {
+    "taskType": {
+      "type": "string",
+      "description": "The task type being queried"
+    },
+    "predictedScore": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Calculated likelihood of successful focused completion (0-100)"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH"],
+      "description": "Confidence tier based on historical session volume for this task type"
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH"],
+      "description": "Operational risk of failure, abandonment, or fatigue disruption"
+    },
+    "bestAlternativeWindow": {
+      "type": "string",
+      "description": "Recommended time window to reschedule this task for optimal performance"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Explainable deterministic factors driving the calculated score"
+    },
+    "recommendation": {
+      "type": "string",
+      "description": "Immediate actionable coaching advice for the user"
+    }
+  },
+  "required": [
+    "taskType",
+    "predictedScore",
+    "confidence",
+    "riskLevel",
+    "bestAlternativeWindow",
+    "reason",
+    "recommendation"
+  ]
+}

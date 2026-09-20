@@ -202,5 +202,121 @@ class TestInsightEngine(unittest.TestCase):
         # Top-level recommendation should match primary recommendation
         self.assertIn(recs[0]["advice"], res["recommendation"])
 
+    # 10. Predictive Productivity / "Should I do this task now?" tests
+    def test_high_prediction_optimal_conditions(self):
+        # Coding in Home Office at 10:00 AM with fresh screen duration
+        pred = self.engine.predict_task_readiness(
+            task_type="coding",
+            current_hour=10,
+            current_context="Home Office",
+            recent_screen_duration=600
+        )
+        self.assertEqual(pred["taskType"], "coding")
+        self.assertGreaterEqual(pred["predictedScore"], 70)
+        self.assertEqual(pred["riskLevel"], "LOW")
+        self.assertEqual(pred["confidence"], "HIGH")
+        self.assertIn("optimal", pred["reason"].lower())
+        self.assertIn("Start coding now", pred["recommendation"])
+
+    def test_low_prediction_suboptimal_conditions(self):
+        # Writing in Cafe at 15:00 (3 PM) with prolonged screen duration
+        pred = self.engine.predict_task_readiness(
+            task_type="writing",
+            current_hour=15,
+            current_context="Cafe",
+            recent_screen_duration=5400
+        )
+        self.assertEqual(pred["taskType"], "writing")
+        self.assertLess(pred["predictedScore"], 45)
+        self.assertEqual(pred["riskLevel"], "HIGH")
+        self.assertIn("HIGH risk", pred["reason"])
+        self.assertIn("09:00 - 11:00", pred["bestAlternativeWindow"])
+        self.assertIn("postponing", pred["recommendation"].lower())
+
+    def test_insufficient_data_prediction(self):
+        # Case A: 0 tasks logged
+        empty_engine = InsightEngine([], [])
+        pred_empty = empty_engine.predict_task_readiness("coding")
+        self.assertEqual(pred_empty["confidence"], "LOW")
+        self.assertEqual(pred_empty["predictedScore"], 50)
+        self.assertEqual(pred_empty["riskLevel"], "MEDIUM")
+        self.assertIn("calibration", pred_empty["reason"].lower())
+
+        # Case B: < 5 tasks logged
+        sparse_tasks = [
+            {"id": "1", "type": "coding", "createdAt": 1000, "completedAt": 2000, "duration": 1000, "location": "Home Office"},
+            {"id": "2", "type": "coding", "createdAt": 3000, "completedAt": 4000, "duration": 1000, "location": "Home Office"}
+        ]
+        sparse_engine = InsightEngine(sparse_tasks)
+        pred_sparse = sparse_engine.predict_task_readiness("coding")
+        self.assertEqual(pred_sparse["confidence"], "LOW")
+
+        # Case C: Unseen task type in established profile
+        pred_unseen = self.engine.predict_task_readiness("robotics")
+        self.assertEqual(pred_unseen["confidence"], "LOW")
+        self.assertIn("No historical sessions recorded for 'robotics'", pred_unseen["reason"])
+
+    def test_context_change_prediction(self):
+        # Same task (writing) and hour (10 AM), comparing Home Office vs Cafe
+        pred_office = self.engine.predict_task_readiness(
+            task_type="writing",
+            current_hour=10,
+            current_context="Home Office",
+            recent_screen_duration=600
+        )
+        pred_cafe = self.engine.predict_task_readiness(
+            task_type="writing",
+            current_hour=10,
+            current_context="Cafe",
+            recent_screen_duration=600
+        )
+        # Home Office completion rate is 100% vs Cafe 0% in synthetic dataset
+        self.assertGreater(pred_office["predictedScore"], pred_cafe["predictedScore"])
+        self.assertIn("Home Office", pred_office["recommendation"])
+
+    def test_fatigue_impact_on_prediction(self):
+        # Coding in Home Office at 10 AM (low fatigue, 10 min screen) vs
+        # Coding in Home Office at 15:00 (afternoon slump, 90 min screen)
+        pred_fresh = self.engine.predict_task_readiness(
+            task_type="coding",
+            current_hour=10,
+            current_context="Home Office",
+            recent_screen_duration=600
+        )
+        pred_fatigued = self.engine.predict_task_readiness(
+            task_type="coding",
+            current_hour=15,
+            current_context="Home Office",
+            recent_screen_duration=5400
+        )
+        self.assertGreater(pred_fresh["predictedScore"], pred_fatigued["predictedScore"])
+        self.assertIn("fatigue", pred_fatigued["reason"].lower())
+
+    def test_analyze_with_target_task_type(self):
+        # analyze() without target_task_type preserves backward compatibility (no taskPrediction)
+        res_standard = self.engine.analyze()
+        self.assertNotIn("taskPrediction", res_standard)
+
+        # analyze() with target_task_type populates taskPrediction
+        res_with_target = self.engine.analyze(target_task_type="coding", current_hour=10)
+        self.assertIn("taskPrediction", res_with_target)
+        tp = res_with_target["taskPrediction"]
+        self.assertEqual(tp["taskType"], "coding")
+        self.assertIn("predictedScore", tp)
+        self.assertIn("riskLevel", tp)
+        self.assertIn("confidence", tp)
+
+    def test_module_level_prediction_helper(self):
+        from engine import predict_task_readiness
+        pred = predict_task_readiness(
+            tasks=self.tasks,
+            context_signals=self.signals,
+            task_type="coding",
+            current_hour=10,
+            current_context="Home Office"
+        )
+        self.assertEqual(pred["taskType"], "coding")
+        self.assertGreaterEqual(pred["predictedScore"], 70)
+
 if __name__ == "__main__":
     unittest.main()

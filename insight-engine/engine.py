@@ -13,12 +13,18 @@ class InsightEngine:
         self.tasks = tasks or []
         self.context_signals = context_signals or []
 
-    def analyze(self) -> Dict[str, Any]:
+    def analyze(
+        self,
+        target_task_type: Optional[str] = None,
+        current_hour: Optional[int] = None,
+        current_context: Optional[str] = None,
+        recent_screen_duration: Optional[int] = None
+    ) -> Dict[str, Any]:
         total_tasks = len(self.tasks)
         confidence = self._calculate_confidence()
 
         if total_tasks == 0:
-            return {
+            res = {
                 "peakHour": "Insufficient Data",
                 "procrastinationTrigger": "No activity patterns detected yet",
                 "bestContext": "Track at least 5 tasks to calibrate",
@@ -59,6 +65,14 @@ class InsightEngine:
                     }
                 ]
             }
+            if target_task_type is not None:
+                res["taskPrediction"] = self.predict_task_readiness(
+                    task_type=target_task_type,
+                    current_hour=current_hour,
+                    current_context=current_context,
+                    recent_screen_duration=recent_screen_duration
+                )
+            return res
 
         peak_hour = self._detect_peak_hour()
         procrastination = self._detect_procrastination_trigger()
@@ -76,7 +90,7 @@ class InsightEngine:
         primary_rec = adaptive_recs[0]
         top_recommendation = f"{primary_rec['advice']} {primary_rec['reason']}"
 
-        return {
+        result = {
             "peakHour": peak_hour,
             "procrastinationTrigger": procrastination,
             "bestContext": best_context_str,
@@ -92,6 +106,16 @@ class InsightEngine:
             "productivityProfile": profile,
             "adaptiveRecommendations": adaptive_recs
         }
+
+        if target_task_type is not None:
+            result["taskPrediction"] = self.predict_task_readiness(
+                task_type=target_task_type,
+                current_hour=current_hour,
+                current_context=current_context,
+                recent_screen_duration=recent_screen_duration
+            )
+
+        return result
 
     def _calculate_confidence(self) -> str:
         total = len(self.tasks)
@@ -608,6 +632,264 @@ class InsightEngine:
             else:
                 heatmap[str(h)] = int((b["completed"] / b["attempts"]) * 100)
         return heatmap
+
+    def predict_task_readiness(
+        self,
+        task_type: str,
+        current_hour: Optional[int] = None,
+        current_context: Optional[str] = None,
+        recent_screen_duration: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Evaluate predictive productivity: 'Should I do this task now?'
+        Calculates a deterministic, explainable readiness score (0-100) based on
+        task type historical performance, time-of-day alignment, context match,
+        fatigue level, screen strain, and distraction vulnerability.
+        """
+        # Resolve defaults
+        if current_hour is None:
+            if self.context_signals:
+                current_hour = datetime.fromtimestamp(self.context_signals[-1]["timestamp"] / 1000).hour
+            elif self.tasks:
+                current_hour = datetime.fromtimestamp(self.tasks[-1]["createdAt"] / 1000).hour
+            else:
+                current_hour = datetime.now().hour
+
+        if current_context is None:
+            if self.context_signals:
+                current_context = self.context_signals[-1].get("location") or "Home Office"
+            elif self.tasks:
+                current_context = self.tasks[-1].get("location") or "Home Office"
+            else:
+                current_context = "Home Office"
+
+        if recent_screen_duration is None:
+            if self.context_signals:
+                recent_screen_duration = self.context_signals[-1].get("screenOnDuration", 0)
+            else:
+                recent_screen_duration = 0
+
+        total_tasks = len(self.tasks)
+        type_tasks = [t for t in self.tasks if t.get("type", "").lower() == task_type.lower()]
+        total_type_tasks = len(type_tasks)
+
+        # 1. Cold start / Insufficient data handling
+        if total_tasks == 0:
+            return {
+                "taskType": task_type,
+                "predictedScore": 50,
+                "confidence": "LOW",
+                "riskLevel": "MEDIUM",
+                "bestAlternativeWindow": "09:00 - 11:00",
+                "reason": f"No historical sessions logged. Calibration required to establish baseline readiness for {task_type}.",
+                "recommendation": f"Start a 25-minute calibration block for {task_type} to establish baseline metrics."
+            }
+
+        if total_tasks < 5 or total_type_tasks == 0:
+            completed_all = sum(1 for t in self.tasks if t.get("completedAt"))
+            overall_rate = (completed_all / total_tasks) if total_tasks > 0 else 0.5
+            provisional_score = max(35, min(65, int(overall_rate * 50 + 20)))
+            risk_level = "LOW" if provisional_score >= 60 else ("HIGH" if provisional_score < 40 else "MEDIUM")
+            best_window = "09:00 - 11:00"
+            if total_type_tasks == 0:
+                reason = f"No historical sessions recorded for '{task_type}'. Provisional score based on overall user completion rate ({int(overall_rate * 100)}%)."
+                rec = f"Log at least 3 {task_type} sessions across different times to calibrate high-confidence predictions."
+            else:
+                reason = f"Insufficient sample size ({total_type_tasks} logged session{'s' if total_type_tasks > 1 else ''} for '{task_type}'). Baseline readiness estimate."
+                rec = f"Continue tracking {task_type} sessions across various hours to establish personalized forecasts."
+
+            return {
+                "taskType": task_type,
+                "predictedScore": provisional_score,
+                "confidence": "LOW",
+                "riskLevel": risk_level,
+                "bestAlternativeWindow": best_window,
+                "reason": reason,
+                "recommendation": rec
+            }
+
+        # 2. Historical Task-Type Performance (0..35 points)
+        type_completed = sum(1 for t in type_tasks if t.get("completedAt"))
+        type_comp_rate = type_completed / total_type_tasks
+        score_type = type_comp_rate * 35.0
+
+        # 3. Time-of-Day Alignment (0..25 points)
+        type_hour_tasks = [t for t in type_tasks if abs(datetime.fromtimestamp(t["createdAt"] / 1000).hour - current_hour) <= 1]
+        if type_hour_tasks:
+            hour_comp = sum(1 for t in type_hour_tasks if t.get("completedAt")) / len(type_hour_tasks)
+            score_time = hour_comp * 25.0
+        else:
+            heatmap = self._generate_hourly_heatmap()
+            hour_rate = heatmap.get(str(current_hour), 0) / 100.0
+            hour_attempts = sum(1 for t in self.tasks if datetime.fromtimestamp(t["createdAt"] / 1000).hour == current_hour)
+            if hour_attempts == 0:
+                if 8 <= current_hour <= 12:
+                    hour_rate = 0.8
+                elif 13 <= current_hour <= 17:
+                    hour_rate = 0.45
+                elif 18 <= current_hour <= 21:
+                    hour_rate = 0.65
+                else:
+                    hour_rate = 0.25
+            score_time = hour_rate * 25.0
+
+        # 4. Context Alignment (0..20 points)
+        context_insights = self._analyze_contexts()
+        matching_ctx = next((c for c in context_insights if c["context"].lower() == current_context.lower()), None)
+        type_in_ctx = [t for t in type_tasks if (t.get("location") or "Home Office").lower() == current_context.lower()]
+        if type_in_ctx:
+            ctx_type_comp = sum(1 for t in type_in_ctx if t.get("completedAt")) / len(type_in_ctx)
+            score_context = ctx_type_comp * 20.0
+        elif matching_ctx:
+            score_context = (matching_ctx["completionRate"] / 100.0) * 20.0
+        else:
+            score_context = 10.0
+
+        # 5. Base Readiness Offset (20 points)
+        score_base = 20.0
+
+        # 6. Fatigue & Screen Strain Penalty (0..25 points)
+        fatigue = self._detect_fatigue()
+        fatigue_score_pts = (fatigue["score"] / 100.0) * 15.0
+        screen_pts = 0.0
+        if recent_screen_duration >= 5400:
+            screen_pts = 10.0
+        elif recent_screen_duration >= 3600:
+            screen_pts = 7.0
+        elif recent_screen_duration >= 2400:
+            screen_pts = 4.0
+        elif recent_screen_duration >= 1200:
+            screen_pts = 2.0
+        total_fatigue_penalty = min(25.0, fatigue_score_pts + screen_pts)
+
+        # 7. Distraction & Context Vulnerability Penalty (0..15 points)
+        distraction = self._detect_distraction_sensitivity()
+        distraction_penalty = 0.0
+        is_vulnerable = task_type.lower() in [v.lower() for v in distraction["vulnerableCategories"]]
+        if is_vulnerable:
+            if matching_ctx and matching_ctx["status"] == "Suboptimal":
+                distraction_penalty += 12.0
+            else:
+                distraction_penalty += 6.0
+        if distraction["level"] == "HIGH":
+            distraction_penalty += 3.0
+        total_distraction_penalty = min(15.0, distraction_penalty)
+
+        # 8. Score Synthesis
+        raw_score = score_base + score_type + score_time + score_context - total_fatigue_penalty - total_distraction_penalty
+        predicted_score = int(round(max(0.0, min(100.0, raw_score))))
+
+        # 9. Risk Level & Confidence
+        if predicted_score >= 70:
+            risk_level = "LOW"
+        elif predicted_score >= 45:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "HIGH"
+
+        if total_type_tasks >= 3 and total_tasks >= 5:
+            confidence = "HIGH"
+        elif total_type_tasks >= 1 and total_tasks >= 5:
+            confidence = "MEDIUM"
+        else:
+            confidence = "LOW"
+
+        # 10. Best Alternative Window
+        task_types = self._analyze_task_types()
+        type_stat = next((t for t in task_types if t["taskType"].lower() == task_type.lower()), None)
+        if type_stat and type_stat["strongestWindow"] != "Insufficient data":
+            best_window = type_stat["strongestWindow"]
+        else:
+            best_window = self._detect_peak_hour().split("(")[0].strip()
+
+        # Determine alternative window string
+        window_start = 9
+        window_end = 11
+        try:
+            parts = best_window.split(" - ")
+            window_start = int(parts[0].split(":")[0])
+            window_end = int(parts[1].split(":")[0])
+        except Exception:
+            window_start = 9
+            window_end = 11
+
+        is_currently_in_best_window = (window_start <= current_hour < window_end) if window_start < window_end else (current_hour >= window_start or current_hour < window_end)
+
+        if is_currently_in_best_window:
+            if risk_level == "LOW":
+                best_alt_window = f"Current window ({best_window}) is optimal"
+            else:
+                best_alt_window = f"Tomorrow morning ({best_window})"
+        else:
+            best_alt_window = best_window
+
+        # 11. Explainable Reason
+        positives = []
+        negatives = []
+
+        if type_comp_rate >= 0.75:
+            positives.append(f"{task_type.capitalize()} completion is high ({int(type_comp_rate * 100)}%)")
+        elif type_comp_rate <= 0.40:
+            negatives.append(f"{task_type.capitalize()} completion is historically low ({int(type_comp_rate * 100)}%)")
+
+        if score_time >= 18.0:
+            positives.append(f"time-of-day alignment is optimal ({current_hour:02d}:00)")
+        elif score_time <= 10.0:
+            negatives.append(f"hour ({current_hour:02d}:00) is outside your peak focus")
+
+        if score_context >= 15.0:
+            positives.append(f"environment '{current_context}' is high-performing")
+        elif matching_ctx and matching_ctx["status"] == "Suboptimal":
+            negatives.append(f"environment '{current_context}' has high abandonment")
+
+        if fatigue["score"] >= 35 or recent_screen_duration >= 3600:
+            negatives.append(f"fatigue is elevated (score: {fatigue['score']}/100, {recent_screen_duration // 60}m screen time)")
+
+        if is_vulnerable and (matching_ctx and matching_ctx["status"] == "Suboptimal"):
+            negatives.append(f"{task_type} is highly vulnerable to distractions in {current_context}")
+
+        if risk_level == "HIGH":
+            reason = f"{task_type.capitalize()} now has HIGH risk ({predicted_score}/100): " + ("; ".join(negatives) if negatives else f"historical completion is significantly lower during this time and context") + f". Your {task_type} completion is significantly higher during {best_window}."
+        elif risk_level == "MEDIUM":
+            reason = f"{task_type.capitalize()} readiness is MODERATE ({predicted_score}/100): " + ("; ".join(positives[:1] + negatives[:2]) if (positives or negatives) else "balanced conditions with minor timing or fatigue friction") + "."
+        else:
+            reason = f"Optimal conditions for {task_type} ({predicted_score}/100): " + ("; ".join(positives) if positives else f"strong historical focus metrics in {current_context}") + "."
+
+        # 12. Recommendation
+        best_ctx_name = context_insights[0]["context"] if context_insights else "Home Office"
+        if risk_level == "HIGH":
+            recommendation = f"Consider postponing {task_type} to {best_alt_window} in {best_ctx_name}. Take a 15-minute break now to recover cognitive energy."
+        elif risk_level == "MEDIUM":
+            recommendation = f"Proceed with a focused 25-minute sprint for {task_type}. Minimize distractions and take a short recovery break afterward."
+        else:
+            recommendation = f"Start {task_type} now. You are in optimal conditions for sustained focus in {current_context}."
+
+        return {
+            "taskType": task_type,
+            "predictedScore": predicted_score,
+            "confidence": confidence,
+            "riskLevel": risk_level,
+            "bestAlternativeWindow": best_alt_window,
+            "reason": reason,
+            "recommendation": recommendation
+        }
+
+def predict_task_readiness(
+    tasks: List[Dict[str, Any]],
+    context_signals: Optional[List[Dict[str, Any]]] = None,
+    task_type: str = "coding",
+    current_hour: Optional[int] = None,
+    current_context: Optional[str] = None,
+    recent_screen_duration: Optional[int] = None
+) -> Dict[str, Any]:
+    """Module-level convenience wrapper for predict_task_readiness."""
+    engine = InsightEngine(tasks, context_signals)
+    return engine.predict_task_readiness(
+        task_type=task_type,
+        current_hour=current_hour,
+        current_context=current_context,
+        recent_screen_duration=recent_screen_duration
+    )
 
 if __name__ == "__main__":
     import json, os

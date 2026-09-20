@@ -228,6 +228,38 @@
         },
         "required": ["title", "advice", "reason", "priority", "impact"]
       }
+    },
+    "taskPrediction": {
+      "type": "object",
+      "description": "Predictive productivity assessment for starting a specific task at the current moment ('Should I do this task now?')",
+      "properties": {
+        "taskType": {
+          "type": "string"
+        },
+        "predictedScore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"]
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"]
+        },
+        "bestAlternativeWindow": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        }
+      },
+      "required": ["predictedScore", "confidence", "riskLevel", "bestAlternativeWindow", "reason", "recommendation"]
     }
   },
   "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]

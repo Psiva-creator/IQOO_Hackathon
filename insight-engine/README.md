@@ -159,11 +159,55 @@ Rather than static templates, recommendations are generated and prioritized dyna
 
 ---
 
+## 🔮 Predictive Productivity / "Should I do this task now?"
+
+The engine exposes predictive readiness evaluation (`predict_task_readiness` in Python, `predictTaskReadiness` in Kotlin, or `taskPrediction` within `analyze()`), answering: **"Given my current state, context, and time of day, is now an optimal time to start this specific task?"**
+
+### 1. Mathematical Scoring Formula ($0 \le S_{\text{predicted}} \le 100$)
+
+$$\begin{aligned}
+S_{\text{predicted}} &= \text{clamp}\Big(S_{\text{base}} + S_{\text{task}} + S_{\text{time}} + S_{\text{context}} - P_{\text{fatigue}} - P_{\text{distraction}},\, 0,\, 100\Big)
+\end{aligned}$$
+
+| Factor | Weight / Range | Description & Calculation |
+|---|---|---|
+| **$S_{\text{base}}$** | $20$ pts | Baseline focus readiness offset. |
+| **$S_{\text{task}}$** | $0 - 35$ pts | $C_{\text{type}} \times 35.0$ where $C_{\text{type}}$ is historical completion rate for this task type. |
+| **$S_{\text{time}}$** | $0 - 25$ pts | $H_{\text{rate}} \times 25.0$ based on success around `current_hour` (from heatmap or diurnal curve). |
+| **$S_{\text{context}}$** | $0 - 20$ pts | $C_{\text{context}} \times 20.0$ based on user's completion rate in the active environment. |
+| **$P_{\text{fatigue}}$** | $0 - 25$ pts | $(S_{\text{fatigue}} \times 0.15) + P_{\text{screen}}$ (penalizes high fatigue score and continuous screen $> 40\text{m}$). |
+| **$P_{\text{distraction}}$** | $0 - 15$ pts | Penalizes vulnerable task types in suboptimal environments (e.g. writing in Cafe: $-12$ pts). |
+
+### 2. Risk Levels & Thresholds
+* **`LOW` Risk ($S_{\text{predicted}} \ge 70$):** High historical probability of focus; conditions optimal.
+* **`MEDIUM` Risk ($45 \le S_{\text{predicted}} < 70$):** Moderate friction; suggests 25-minute capped focus sprint.
+* **`HIGH` Risk ($S_{\text{predicted}} < 45$):** Severe failure/burnout probability; advises rescheduling to `bestAlternativeWindow`.
+
+### 3. Confidence Stratification
+* **`HIGH`**: User has $\ge 5$ total sessions and $\ge 3$ sessions for this specific task type.
+* **`MEDIUM`**: User has $\ge 5$ total sessions and $\ge 1$ session for this specific task type.
+* **`LOW`**: Insufficient sessions ($< 5$ total or $0$ for this task type). Returns baseline calibration estimate.
+
+### 4. Output Contract
+```json
+{
+  "taskType": "coding",
+  "predictedScore": 42,
+  "confidence": "HIGH",
+  "riskLevel": "HIGH",
+  "bestAlternativeWindow": "09:00 - 11:00",
+  "reason": "Coding now has HIGH risk (42/100): hour (15:00) is outside your peak focus; fatigue is elevated (score: 90/100, 90m screen time). Your coding completion is significantly higher during 09:00 - 11:00.",
+  "recommendation": "Consider postponing coding to Tomorrow morning (09:00 - 11:00) in Home Office. Take a 15-minute break now to recover cognitive energy."
+}
+```
+
+---
+
 ## ⚖️ Limitations & Methodology
 
-* **Deterministic Statistical/Heuristic Engine:** All profile attributes and recommendations are derived via mathematical heuristics (sliding temporal histograms, ratio drops, duration variance).
+* **Deterministic Statistical/Heuristic Engine:** All profile attributes, recommendations, and predictions are derived via transparent mathematical heuristics (sliding temporal histograms, ratio drops, duration variance).
 * **No Cloud AI / Zero Data Leakage:** This is **not** a cloud LLM or black-box neural network; it runs entirely within Android CPU processes with $< 20\text{ms}$ calculation latency.
-* **Sample Size Sensitivity:** Profile conclusions are gated by sample count. When $< 5$ sessions exist, `profileConfidence` drops to `LOW` and recommendations default to data collection pacing rather than false conclusions.
+* **Sample Size Sensitivity:** Profile conclusions are gated by sample count. When $< 5$ sessions exist, `confidence` drops to `LOW` and recommendations default to data collection calibration rather than false conclusions.
 
 ---
 
@@ -171,6 +215,26 @@ Rather than static templates, recommendations are generated and prioritized dyna
 
 Run test suite:
 ```bash
-python3 test_engine.py
+python3 -m unittest test_engine.py -v
 ```
-14 unit tests cover backward compatibility, morning/afternoon peak detection, task-type analysis, context correlation, high fatigue, conflicting patterns, confidence tiers, and adaptive recommendation ranking.
+21 unit tests cover:
+1. Backward compatibility for legacy contracts
+2. Peak morning hour detection
+3. Procrastination trigger detection
+4. Confidence level tiers
+5. Hourly heatmap generation
+6. Insufficient data / cold start profiles
+7. Strong morning & afternoon profiles
+8. Task-type $\times$ time window correlation
+9. Context-dependent performance ranking
+10. Conflicting patterns & high-switching behavior
+11. High fatigue detection & adaptive recommendations
+12. Recommendation generation & priority sorting
+13. **High prediction (optimal conditions)**
+14. **Low prediction (suboptimal context & timing)**
+15. **Insufficient data prediction (cold start, sparse, unseen task types)**
+16. **Context change prediction (Home Office vs Cafe comparison)**
+17. **Fatigue & screen strain impact on prediction**
+18. **`analyze()` backward-compatible target task prediction**
+19. **Module-level convenience prediction helper**
+

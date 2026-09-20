@@ -59,6 +59,16 @@ data class ProductivityProfile(
     val taskTypeAnalysis: List<TaskTypeAnalysis> = emptyList()
 )
 
+data class TaskPrediction(
+    val taskType: String,
+    val predictedScore: Int,
+    val confidence: String, // LOW, MEDIUM, HIGH
+    val riskLevel: String,  // LOW, MEDIUM, HIGH
+    val bestAlternativeWindow: String,
+    val reason: String,
+    val recommendation: String
+)
+
 data class InsightResult(
     val peakHour: String,
     val procrastinationTrigger: String,
@@ -87,7 +97,8 @@ data class InsightResult(
         distractionPattern = "Insufficient sessions",
         profileConfidence = "LOW"
     ),
-    val adaptiveRecommendations: List<AdaptiveRecommendation> = emptyList()
+    val adaptiveRecommendations: List<AdaptiveRecommendation> = emptyList(),
+    val taskPrediction: TaskPrediction? = null
 )
 
 /**
@@ -100,7 +111,12 @@ class InsightEngine(
     private val contextSignals: List<ContextSignal> = emptyList()
 ) {
 
-    fun analyze(): InsightResult {
+    fun analyze(
+        targetTaskType: String? = null,
+        currentHour: Int? = null,
+        currentContext: String? = null,
+        recentScreenDuration: Long? = null
+    ): InsightResult {
         val totalTasks = tasks.size
         val confidence = calculateConfidence()
 
@@ -124,6 +140,10 @@ class InsightEngine(
                 priority = "LOW",
                 impact = "LOW"
             )
+            val pred = if (targetTaskType != null) {
+                predictTaskReadiness(targetTaskType, currentHour, currentContext, recentScreenDuration)
+            } else null
+
             return InsightResult(
                 peakHour = "Insufficient Data",
                 procrastinationTrigger = "No activity patterns detected yet",
@@ -142,7 +162,8 @@ class InsightEngine(
                     summary = "Insufficient task and signal data to evaluate distraction sensitivity."
                 ),
                 productivityProfile = emptyProfile,
-                adaptiveRecommendations = listOf(defaultRec)
+                adaptiveRecommendations = listOf(defaultRec),
+                taskPrediction = pred
             )
         }
 
@@ -161,6 +182,10 @@ class InsightEngine(
         val primaryRec = adaptiveRecs.first()
         val topRecommendation = "${primaryRec.advice} ${primaryRec.reason}"
 
+        val pred = if (targetTaskType != null) {
+            predictTaskReadiness(targetTaskType, currentHour, currentContext, recentScreenDuration)
+        } else null
+
         return InsightResult(
             peakHour = peakHour,
             procrastinationTrigger = procrastinationTrigger,
@@ -175,7 +200,8 @@ class InsightEngine(
             contextInsights = contextInsights,
             distractionSensitivity = distraction,
             productivityProfile = profile,
-            adaptiveRecommendations = adaptiveRecs
+            adaptiveRecommendations = adaptiveRecs,
+            taskPrediction = pred
         )
     }
 
@@ -739,5 +765,278 @@ class InsightEngine(
             val comp = completed[hour] ?: 0
             if (att == 0) 0 else ((comp.toDouble() / att) * 100).toInt()
         }
+    }
+
+    fun predictTaskReadiness(
+        taskType: String,
+        currentHour: Int? = null,
+        currentContext: String? = null,
+        recentScreenDuration: Long? = null
+    ): TaskPrediction {
+        val resolvedHour = currentHour ?: if (contextSignals.isNotEmpty()) {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = contextSignals.last().timestamp
+            cal.get(Calendar.HOUR_OF_DAY)
+        } else if (tasks.isNotEmpty()) {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = tasks.last().createdAt
+            cal.get(Calendar.HOUR_OF_DAY)
+        } else {
+            Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        }
+
+        val resolvedContext = currentContext ?: if (contextSignals.isNotEmpty()) {
+            contextSignals.last().location
+        } else if (tasks.isNotEmpty()) {
+            tasks.last().location ?: "Home Office"
+        } else {
+            "Home Office"
+        }
+
+        val resolvedScreenDuration = recentScreenDuration ?: if (contextSignals.isNotEmpty()) {
+            contextSignals.last().screenOnDuration
+        } else {
+            0L
+        }
+
+        val totalTasks = tasks.size
+        val typeTasks = tasks.filter { it.type.name.equals(taskType, ignoreCase = true) }
+        val totalTypeTasks = typeTasks.size
+
+        if (totalTasks == 0) {
+            return TaskPrediction(
+                taskType = taskType,
+                predictedScore = 50,
+                confidence = "LOW",
+                riskLevel = "MEDIUM",
+                bestAlternativeWindow = "09:00 - 11:00",
+                reason = "No historical sessions logged. Calibration required to establish baseline readiness for $taskType.",
+                recommendation = "Start a 25-minute calibration block for $taskType to establish baseline metrics."
+            )
+        }
+
+        if (totalTasks < 5 || totalTypeTasks == 0) {
+            val completedAll = tasks.count { it.completedAt != null }
+            val overallRate = completedAll.toDouble() / totalTasks
+            val provisionalScore = (overallRate * 50.0 + 20.0).toInt().coerceIn(35, 65)
+            val riskLevel = if (provisionalScore >= 60) "LOW" else if (provisionalScore < 40) "HIGH" else "MEDIUM"
+            val bestWindow = "09:00 - 11:00"
+            val reason = if (totalTypeTasks == 0) {
+                "No historical sessions recorded for '$taskType'. Provisional score based on overall user completion rate (${(overallRate * 100).toInt()}%)."
+            } else {
+                val s = if (totalTypeTasks > 1) "s" else ""
+                "Insufficient sample size ($totalTypeTasks logged session$s for '$taskType'). Baseline readiness estimate."
+            }
+            val rec = if (totalTypeTasks == 0) {
+                "Log at least 3 $taskType sessions to calibrate high-confidence predictive readiness."
+            } else {
+                "Continue tracking $taskType sessions across various hours to establish personalized forecasts."
+            }
+            return TaskPrediction(
+                taskType = taskType,
+                predictedScore = provisionalScore,
+                confidence = "LOW",
+                riskLevel = riskLevel,
+                bestAlternativeWindow = bestWindow,
+                reason = reason,
+                recommendation = rec
+            )
+        }
+
+        // 2. Historical Task-Type Performance (0..35 points)
+        val typeCompleted = typeTasks.count { it.completedAt != null }
+        val typeCompRate = typeCompleted.toDouble() / totalTypeTasks
+        val scoreType = typeCompRate * 35.0
+
+        // 3. Time-of-Day Alignment (0..25 points)
+        val cal = Calendar.getInstance()
+        val typeHourTasks = typeTasks.filter {
+            cal.timeInMillis = it.createdAt
+            val h = cal.get(Calendar.HOUR_OF_DAY)
+            Math.abs(h - resolvedHour) <= 1
+        }
+        val scoreTime = if (typeHourTasks.isNotEmpty()) {
+            val comp = typeHourTasks.count { it.completedAt != null }.toDouble() / typeHourTasks.size
+            comp * 25.0
+        } else {
+            val heatmap = generateHourlyHeatmap()
+            var hourRate = (heatmap[resolvedHour] ?: 0) / 100.0
+            val hourAttempts = tasks.count {
+                cal.timeInMillis = it.createdAt
+                cal.get(Calendar.HOUR_OF_DAY) == resolvedHour
+            }
+            if (hourAttempts == 0) {
+                hourRate = when (resolvedHour) {
+                    in 8..12 -> 0.8
+                    in 13..17 -> 0.45
+                    in 18..21 -> 0.65
+                    else -> 0.25
+                }
+            }
+            hourRate * 25.0
+        }
+
+        // 4. Context Alignment (0..20 points)
+        val contextInsights = analyzeContexts()
+        val matchingCtx = contextInsights.firstOrNull { it.context.equals(resolvedContext, ignoreCase = true) }
+        val typeInCtx = typeTasks.filter { (it.location ?: "Home Office").equals(resolvedContext, ignoreCase = true) }
+        val scoreContext = if (typeInCtx.isNotEmpty()) {
+            val comp = typeInCtx.count { it.completedAt != null }.toDouble() / typeInCtx.size
+            comp * 20.0
+        } else if (matchingCtx != null) {
+            (matchingCtx.completionRate / 100.0) * 20.0
+        } else {
+            10.0
+        }
+
+        // 5. Base Readiness Offset (20 points)
+        val scoreBase = 20.0
+
+        // 6. Fatigue & Screen Strain Penalty (0..25 points)
+        val fatigue = detectFatigue()
+        val fatigueScorePts = (fatigue.second / 100.0) * 15.0
+        val screenPts = when {
+            resolvedScreenDuration >= 5400L -> 10.0
+            resolvedScreenDuration >= 3600L -> 7.0
+            resolvedScreenDuration >= 2400L -> 4.0
+            resolvedScreenDuration >= 1200L -> 2.0
+            else -> 0.0
+        }
+        val totalFatiguePenalty = Math.min(25.0, fatigueScorePts + screenPts)
+
+        // 7. Distraction & Context Vulnerability Penalty (0..15 points)
+        val distraction = detectDistractionSensitivity()
+        var distractionPenalty = 0.0
+        val isVulnerable = distraction.vulnerableCategories.any { it.equals(taskType, ignoreCase = true) }
+        if (isVulnerable) {
+            if (matchingCtx?.status == "Suboptimal") {
+                distractionPenalty += 12.0
+            } else {
+                distractionPenalty += 6.0
+            }
+        }
+        if (distraction.level == "HIGH") {
+            distractionPenalty += 3.0
+        }
+        val totalDistractionPenalty = Math.min(15.0, distractionPenalty)
+
+        // 8. Score Synthesis
+        val rawScore = scoreBase + scoreType + scoreTime + scoreContext - totalFatiguePenalty - totalDistractionPenalty
+        val predictedScore = Math.round(Math.max(0.0, Math.min(100.0, rawScore))).toInt()
+
+        // 9. Risk Level & Confidence
+        val riskLevel = when {
+            predictedScore >= 70 -> "LOW"
+            predictedScore >= 45 -> "MEDIUM"
+            else -> "HIGH"
+        }
+
+        val confidence = when {
+            totalTypeTasks >= 3 && totalTasks >= 5 -> "HIGH"
+            totalTypeTasks >= 1 && totalTasks >= 5 -> "MEDIUM"
+            else -> "LOW"
+        }
+
+        // 10. Best Alternative Window
+        val taskTypes = analyzeTaskTypes()
+        val typeStat = taskTypes.firstOrNull { it.taskType.equals(taskType, ignoreCase = true) }
+        val bestWindow = if (typeStat != null && typeStat.strongestWindow != "Insufficient data") {
+            typeStat.strongestWindow
+        } else {
+            detectPeakHour().split("(")[0].trim()
+        }
+
+        var windowStart = 9
+        var windowEnd = 11
+        try {
+            val parts = bestWindow.split(" - ")
+            windowStart = parts[0].split(":")[0].toInt()
+            windowEnd = parts[1].split(":")[0].toInt()
+        } catch (e: Exception) {
+            windowStart = 9
+            windowEnd = 11
+        }
+
+        val isCurrentlyInBestWindow = if (windowStart < windowEnd) {
+            resolvedHour in windowStart until windowEnd
+        } else {
+            resolvedHour >= windowStart || resolvedHour < windowEnd
+        }
+
+        val bestAltWindow = if (isCurrentlyInBestWindow) {
+            if (riskLevel == "LOW") {
+                "Current window ($bestWindow) is optimal"
+            } else {
+                "Tomorrow morning ($bestWindow)"
+            }
+        } else {
+            bestWindow
+        }
+
+        // 11. Explainable Reason
+        val positives = mutableListOf<String>()
+        val negatives = mutableListOf<String>()
+
+        if (typeCompRate >= 0.75) {
+            positives.add("${taskType.replaceFirstChar { it.uppercase() }} completion is high (${(typeCompRate * 100).toInt()}%)")
+        } else if (typeCompRate <= 0.40) {
+            negatives.add("${taskType.replaceFirstChar { it.uppercase() }} completion is historically low (${(typeCompRate * 100).toInt()}%)")
+        }
+
+        if (scoreTime >= 18.0) {
+            positives.add(String.format("time-of-day alignment is optimal (%02d:00)", resolvedHour))
+        } else if (scoreTime <= 10.0) {
+            negatives.add(String.format("hour (%02d:00) is outside your peak focus", resolvedHour))
+        }
+
+        if (scoreContext >= 15.0) {
+            positives.add("environment '$resolvedContext' is high-performing")
+        } else if (matchingCtx?.status == "Suboptimal") {
+            negatives.add("environment '$resolvedContext' has high abandonment")
+        }
+
+        if (fatigue.second >= 35 || resolvedScreenDuration >= 3600L) {
+            negatives.add("fatigue is elevated (score: ${fatigue.second}/100, ${resolvedScreenDuration / 60}m screen time)")
+        }
+
+        if (isVulnerable && matchingCtx?.status == "Suboptimal") {
+            negatives.add("$taskType is highly vulnerable to distractions in $resolvedContext")
+        }
+
+        val reason = when (riskLevel) {
+            "HIGH" -> {
+                val negStr = if (negatives.isNotEmpty()) negatives.joinToString("; ") else "historical completion is significantly lower during this time and context"
+                "${taskType.replaceFirstChar { it.uppercase() }} now has HIGH risk ($predictedScore/100): $negStr. Your $taskType completion is significantly higher during $bestWindow."
+            }
+            "MEDIUM" -> {
+                val mixed = if (positives.isNotEmpty() || negatives.isNotEmpty()) {
+                    (positives.take(1) + negatives.take(2)).joinToString("; ")
+                } else {
+                    "balanced conditions with minor timing or fatigue friction"
+                }
+                "${taskType.replaceFirstChar { it.uppercase() }} readiness is MODERATE ($predictedScore/100): $mixed."
+            }
+            else -> {
+                val posStr = if (positives.isNotEmpty()) positives.joinToString("; ") else "strong historical focus metrics in $resolvedContext"
+                "Optimal conditions for $taskType ($predictedScore/100): $posStr."
+            }
+        }
+
+        val bestCtxName = contextInsights.firstOrNull()?.context ?: "Home Office"
+        val recommendation = when (riskLevel) {
+            "HIGH" -> "Consider postponing $taskType to $bestAltWindow in $bestCtxName. Take a 15-minute break now to recover cognitive energy."
+            "MEDIUM" -> "Proceed with a focused 25-minute sprint for $taskType. Minimize distractions and take a short recovery break afterward."
+            else -> "Start $taskType now. You are in optimal conditions for sustained focus in $resolvedContext."
+        }
+
+        return TaskPrediction(
+            taskType = taskType,
+            predictedScore = predictedScore,
+            confidence = confidence,
+            riskLevel = riskLevel,
+            bestAlternativeWindow = bestAltWindow,
+            reason = reason,
+            recommendation = recommendation
+        )
     }
 }
