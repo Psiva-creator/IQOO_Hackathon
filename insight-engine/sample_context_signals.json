@@ -1,0 +1,254 @@
+[
+  {
+    "timestamp": 1789270200000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789274700000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789284600000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789293000000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789297800000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789302600000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  },
+  {
+    "timestamp": 1789356600000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789361100000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789371000000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789379400000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789384200000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789389000000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  },
+  {
+    "timestamp": 1789443000000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789447500000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789457400000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789465800000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789470600000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789475400000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  },
+  {
+    "timestamp": 1789529400000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789533900000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789543800000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789552200000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789557000000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789561800000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  },
+  {
+    "timestamp": 1789615800000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789620300000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789630200000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789638600000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789643400000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789648200000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  },
+  {
+    "timestamp": 1789702200000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789706700000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789716600000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789725000000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789729800000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789734600000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  },
+  {
+    "timestamp": 1789788600000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1800
+  },
+  {
+    "timestamp": 1789793100000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 3600
+  },
+  {
+    "timestamp": 1789803000000,
+    "appCategory": "Communication",
+    "location": "Meeting Room",
+    "screenOnDuration": 2100
+  },
+  {
+    "timestamp": 1789811400000,
+    "appCategory": "Social",
+    "location": "Cafe",
+    "screenOnDuration": 7500
+  },
+  {
+    "timestamp": 1789816200000,
+    "appCategory": "Entertainment",
+    "location": "Cafe",
+    "screenOnDuration": 8200
+  },
+  {
+    "timestamp": 1789821000000,
+    "appCategory": "Productivity",
+    "location": "Home Office",
+    "screenOnDuration": 1200
+  }
+]

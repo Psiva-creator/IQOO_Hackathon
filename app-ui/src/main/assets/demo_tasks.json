@@ -1,6 +1,6 @@
 [
   {
-    "id": "beedfc4e-c187-4b5c-a4a4-f3b474285a39",
+    "id": "f9379702-07a1-47a2-b09b-58a864ff1837",
     "title": "Refactor Data Pipeline (Day 1)",
     "type": "coding",
     "createdAt": 1789271100000,
@@ -10,7 +10,7 @@
     "priority": "high"
   },
   {
-    "id": "b7a07206-7d53-4ee0-bdf5-69c676ea2bc3",
+    "id": "a7cedfe3-9136-4939-a5dd-2694f27935ec",
     "title": "Implement Unit Tests (Day 1)",
     "type": "coding",
     "createdAt": 1789275600000,
@@ -20,7 +20,7 @@
     "priority": "medium"
   },
   {
-    "id": "bb6ff183-7484-4bbf-bb23-a508d6bb6517",
+    "id": "cb8a2de3-474b-4560-b439-e6ece6d7a7de",
     "title": "Sprint Sync (Day 1)",
     "type": "meeting",
     "createdAt": 1789284600000,
@@ -30,7 +30,7 @@
     "priority": "medium"
   },
   {
-    "id": "fa178447-8cfa-4f28-9d17-e86ca185103b",
+    "id": "ddaf23e1-c92b-43da-85f6-0af905211ac3",
     "title": "Draft Technical Proposal (Day 1)",
     "type": "writing",
     "createdAt": 1789293600000,
@@ -40,7 +40,7 @@
     "priority": "high"
   },
   {
-    "id": "53d31934-fe7c-41cd-857c-bcd64ceb19be",
+    "id": "e5584030-a264-46a6-ab9a-4b47f548397e",
     "title": "Documentation Updates (Day 1)",
     "type": "writing",
     "createdAt": 1789298100000,
@@ -50,7 +50,7 @@
     "priority": "low"
   },
   {
-    "id": "40a3464f-a087-4a66-96a4-093a2929b70b",
+    "id": "14fd3eea-6e72-4740-b693-69c094612135",
     "title": "Plan Tomorrow Goals (Day 1)",
     "type": "planning",
     "createdAt": 1789302600000,
@@ -60,7 +60,7 @@
     "priority": "low"
   },
   {
-    "id": "c255fd9b-13fa-41b3-b825-4375b8296b7b",
+    "id": "181c00a2-9b77-4f13-81ce-2718dc89d143",
     "title": "Refactor Data Pipeline (Day 2)",
     "type": "coding",
     "createdAt": 1789357500000,
@@ -70,7 +70,7 @@
     "priority": "high"
   },
   {
-    "id": "fdc0e481-aac7-4a7b-be0b-6a6903f7fcda",
+    "id": "6638b8b6-62d1-42bd-b6ac-7198a438ecf9",
     "title": "Implement Unit Tests (Day 2)",
     "type": "coding",
     "createdAt": 1789362000000,
@@ -80,7 +80,7 @@
     "priority": "medium"
   },
   {
-    "id": "20556057-c4dc-439e-9f0c-bf415500b64d",
+    "id": "b9b30920-78f1-4b75-93cf-5e644e80f27d",
     "title": "Sprint Sync (Day 2)",
     "type": "meeting",
     "createdAt": 1789371000000,
@@ -90,7 +90,7 @@
     "priority": "medium"
   },
   {
-    "id": "a7606d5f-fcac-4a50-8f98-13bb823fed5c",
+    "id": "3538f99d-1414-4527-bde0-ebcd693569d2",
     "title": "Draft Technical Proposal (Day 2)",
     "type": "writing",
     "createdAt": 1789380000000,
@@ -100,7 +100,7 @@
     "priority": "high"
   },
   {
-    "id": "c2a46f74-ecff-449e-9052-194b56b089a2",
+    "id": "b2957fab-9431-4080-a55b-8f5382ea3229",
     "title": "Documentation Updates (Day 2)",
     "type": "writing",
     "createdAt": 1789384500000,
@@ -110,7 +110,7 @@
     "priority": "low"
   },
   {
-    "id": "23b8d00e-3806-4739-888d-f21ca565ba49",
+    "id": "a9f0f346-9957-49b3-8802-91fdfa512abf",
     "title": "Plan Tomorrow Goals (Day 2)",
     "type": "planning",
     "createdAt": 1789389000000,
@@ -120,7 +120,7 @@
     "priority": "low"
   },
   {
-    "id": "9578f3fc-8856-4093-adc8-a865c6341c33",
+    "id": "e3e836c2-355e-4071-a365-bd37b4958a7f",
     "title": "Refactor Data Pipeline (Day 3)",
     "type": "coding",
     "createdAt": 1789443900000,
@@ -130,7 +130,7 @@
     "priority": "high"
   },
   {
-    "id": "e2001fff-f808-420f-a6e4-27f467570a9c",
+    "id": "b12b26e1-1fc2-4c25-b66b-365cafaadeff",
     "title": "Implement Unit Tests (Day 3)",
     "type": "coding",
     "createdAt": 1789448400000,
@@ -140,7 +140,7 @@
     "priority": "medium"
   },
   {
-    "id": "3057a258-3e97-4e20-9a0e-87074cbcd4fe",
+    "id": "12cd04b9-9542-441c-9b30-873986d9eb14",
     "title": "Sprint Sync (Day 3)",
     "type": "meeting",
     "createdAt": 1789457400000,
@@ -150,7 +150,7 @@
     "priority": "medium"
   },
   {
-    "id": "37093599-6b63-4386-92bb-3c1c49f21cbe",
+    "id": "b83b19dc-8200-460c-be53-33becac969df",
     "title": "Draft Technical Proposal (Day 3)",
     "type": "writing",
     "createdAt": 1789466400000,
@@ -160,7 +160,7 @@
     "priority": "high"
   },
   {
-    "id": "ce0a7c08-f0de-4497-ae03-5f55a589e877",
+    "id": "6d516ba4-0384-459a-91d5-a3099d06899d",
     "title": "Documentation Updates (Day 3)",
     "type": "writing",
     "createdAt": 1789470900000,
@@ -170,7 +170,7 @@
     "priority": "low"
   },
   {
-    "id": "b16c41d7-7737-4dc2-8b6b-2b96deca1765",
+    "id": "a165b119-d750-4aac-b363-a9442715144a",
     "title": "Plan Tomorrow Goals (Day 3)",
     "type": "planning",
     "createdAt": 1789475400000,
@@ -180,7 +180,7 @@
     "priority": "low"
   },
   {
-    "id": "8525893f-0c5a-497a-af8b-2f6c1871fd59",
+    "id": "2bd50098-8193-498e-aacf-4effc8b3996c",
     "title": "Refactor Data Pipeline (Day 4)",
     "type": "coding",
     "createdAt": 1789530300000,
@@ -190,7 +190,7 @@
     "priority": "high"
   },
   {
-    "id": "80cc6da2-bb7c-4305-8e02-510785b4bbb8",
+    "id": "b1f33442-5707-47e0-bee5-b229cc88a368",
     "title": "Implement Unit Tests (Day 4)",
     "type": "coding",
     "createdAt": 1789534800000,
@@ -200,7 +200,7 @@
     "priority": "medium"
   },
   {
-    "id": "fd9a988f-3825-4061-a368-91965a96134e",
+    "id": "14e0f366-3395-4eec-980c-4a23e7958a65",
     "title": "Sprint Sync (Day 4)",
     "type": "meeting",
     "createdAt": 1789543800000,
@@ -210,7 +210,7 @@
     "priority": "medium"
   },
   {
-    "id": "21049815-7069-4ee9-a2d7-496003871761",
+    "id": "c224e9cc-97f0-4a69-b19d-74a7a2c284d7",
     "title": "Draft Technical Proposal (Day 4)",
     "type": "writing",
     "createdAt": 1789552800000,
@@ -220,7 +220,7 @@
     "priority": "high"
   },
   {
-    "id": "0180c897-96da-4e7a-9ef8-78a2cece24ec",
+    "id": "c5d09372-b159-438c-8aa1-2f2d3d36d7cc",
     "title": "Documentation Updates (Day 4)",
     "type": "writing",
     "createdAt": 1789557300000,
@@ -230,7 +230,7 @@
     "priority": "low"
   },
   {
-    "id": "0caaa124-7361-4f89-8358-bd398b66f694",
+    "id": "b5c5a642-fb25-4660-aa24-fb9d2880d2d2",
     "title": "Plan Tomorrow Goals (Day 4)",
     "type": "planning",
     "createdAt": 1789561800000,
@@ -240,7 +240,7 @@
     "priority": "low"
   },
   {
-    "id": "c60bd57f-35b9-42e8-bfa9-3acc985c17d2",
+    "id": "8ad493f2-d509-4f85-9b66-f028e694e3d4",
     "title": "Refactor Data Pipeline (Day 5)",
     "type": "coding",
     "createdAt": 1789616700000,
@@ -250,7 +250,7 @@
     "priority": "high"
   },
   {
-    "id": "c143d16b-5225-437b-a871-a4eba38854d7",
+    "id": "1184174e-dcac-48c6-b3fe-1826e3165e8f",
     "title": "Implement Unit Tests (Day 5)",
     "type": "coding",
     "createdAt": 1789621200000,
@@ -260,7 +260,7 @@
     "priority": "medium"
   },
   {
-    "id": "44d2400f-183c-4beb-9487-5e5a87eb6d39",
+    "id": "30a4ff74-006b-41d6-82cd-04b6795f20f6",
     "title": "Sprint Sync (Day 5)",
     "type": "meeting",
     "createdAt": 1789630200000,
@@ -270,7 +270,7 @@
     "priority": "medium"
   },
   {
-    "id": "833a14e8-74f6-4540-a0b7-3af13b95c9a6",
+    "id": "3c5dded9-166d-40cf-8554-68922df07c6c",
     "title": "Draft Technical Proposal (Day 5)",
     "type": "writing",
     "createdAt": 1789639200000,
@@ -280,7 +280,7 @@
     "priority": "high"
   },
   {
-    "id": "9bf69c23-9167-47d7-b4bd-2cebe914fc6d",
+    "id": "066126dd-d24a-4e5e-ab7a-c1dbd1e38dd5",
     "title": "Documentation Updates (Day 5)",
     "type": "writing",
     "createdAt": 1789643700000,
@@ -290,7 +290,7 @@
     "priority": "low"
   },
   {
-    "id": "c8519058-21b9-44ca-93dc-0de79ba7792b",
+    "id": "b07dd331-c6eb-4589-a84c-5a28430a8010",
     "title": "Plan Tomorrow Goals (Day 5)",
     "type": "planning",
     "createdAt": 1789648200000,
@@ -300,7 +300,7 @@
     "priority": "low"
   },
   {
-    "id": "d79b790a-1c5b-414b-999e-72324c4e15e0",
+    "id": "650afce1-9c4b-4d3d-ad11-616c8afd39ce",
     "title": "Refactor Data Pipeline (Day 6)",
     "type": "coding",
     "createdAt": 1789703100000,
@@ -310,7 +310,7 @@
     "priority": "high"
   },
   {
-    "id": "6248e45a-963f-4ffa-bf1f-a78448ce93c5",
+    "id": "61955950-e9d3-4365-a926-71d7fbaa36cc",
     "title": "Implement Unit Tests (Day 6)",
     "type": "coding",
     "createdAt": 1789707600000,
@@ -320,7 +320,7 @@
     "priority": "medium"
   },
   {
-    "id": "2b42c68c-fb35-42c2-aadd-18d1bc1db847",
+    "id": "96a5d91d-aa79-4797-9d3a-f2bee6a1ec93",
     "title": "Sprint Sync (Day 6)",
     "type": "meeting",
     "createdAt": 1789716600000,
@@ -330,7 +330,7 @@
     "priority": "medium"
   },
   {
-    "id": "826a68be-9ddc-4cfc-a1d2-7112edaf66bb",
+    "id": "c9428227-bb56-4667-b8aa-3c3522dcc8e0",
     "title": "Draft Technical Proposal (Day 6)",
     "type": "writing",
     "createdAt": 1789725600000,
@@ -340,7 +340,7 @@
     "priority": "high"
   },
   {
-    "id": "56194ee4-ab69-447a-a3c2-b3f2905b4100",
+    "id": "22139add-cf89-4d07-be32-ebb33954c384",
     "title": "Documentation Updates (Day 6)",
     "type": "writing",
     "createdAt": 1789730100000,
@@ -350,7 +350,7 @@
     "priority": "low"
   },
   {
-    "id": "9cfd9d37-ea28-4013-852d-05963c619101",
+    "id": "c6b7ebed-69a8-4433-bdc8-b90b636f6f70",
     "title": "Plan Tomorrow Goals (Day 6)",
     "type": "planning",
     "createdAt": 1789734600000,
@@ -360,7 +360,7 @@
     "priority": "low"
   },
   {
-    "id": "89f767bf-8dad-47cb-97f7-301693919d7b",
+    "id": "1f6999d5-ddcc-4e3f-9b30-f0f447e558ba",
     "title": "Refactor Data Pipeline (Day 7)",
     "type": "coding",
     "createdAt": 1789789500000,
@@ -370,7 +370,7 @@
     "priority": "high"
   },
   {
-    "id": "96d9afa2-97d3-4e74-a840-a215ff0cfaa3",
+    "id": "36d787ad-27de-4e4c-af98-ba6dbf6ba882",
     "title": "Implement Unit Tests (Day 7)",
     "type": "coding",
     "createdAt": 1789794000000,
@@ -380,7 +380,7 @@
     "priority": "medium"
   },
   {
-    "id": "d7ad2282-50d6-42e0-bb64-2b6e98a5e130",
+    "id": "a687e88a-1c34-4cc5-b1a1-bece2691b4c0",
     "title": "Sprint Sync (Day 7)",
     "type": "meeting",
     "createdAt": 1789803000000,
@@ -390,7 +390,7 @@
     "priority": "medium"
   },
   {
-    "id": "d6447bf1-158e-4df4-a33c-6b6529f2c542",
+    "id": "616e19bc-9d36-4ef0-9eea-0a2d2693dc23",
     "title": "Draft Technical Proposal (Day 7)",
     "type": "writing",
     "createdAt": 1789812000000,
@@ -400,7 +400,7 @@
     "priority": "high"
   },
   {
-    "id": "25dea7c5-41b6-4774-a3ac-e577aa7dd354",
+    "id": "7f6baa4e-36df-4474-9ca3-53fa441fe7d3",
     "title": "Documentation Updates (Day 7)",
     "type": "writing",
     "createdAt": 1789816500000,
@@ -410,7 +410,7 @@
     "priority": "low"
   },
   {
-    "id": "38613a83-1cbb-41df-9e32-a4faa779a503",
+    "id": "fef8e8db-038d-45cf-ab5f-939d2688829b",
     "title": "Plan Tomorrow Goals (Day 7)",
     "type": "planning",
     "createdAt": 1789821000000,

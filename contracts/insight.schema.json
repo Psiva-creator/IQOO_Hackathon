@@ -36,6 +36,83 @@
       "additionalProperties": {
         "type": "integer"
       }
+    },
+    "fatigueLevel": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH"],
+      "description": "Calculated cognitive and session fatigue level"
+    },
+    "fatigueScore": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Quantified fatigue score (0-100)"
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Explainable summary of detected fatigue and context factors"
+    },
+    "contextInsights": {
+      "type": "array",
+      "description": "Performance metrics across environments/contexts",
+      "items": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string"
+          },
+          "completionRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "totalTasks": {
+            "type": "integer"
+          },
+          "completedTasks": {
+            "type": "integer"
+          },
+          "avgDuration": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Optimal", "Moderate", "Suboptimal"]
+          }
+        },
+        "required": ["context", "completionRate", "totalTasks", "completedTasks", "status"]
+      }
+    },
+    "distractionSensitivity": {
+      "type": "object",
+      "description": "Sensitivity metrics correlating non-productive contexts with task failure",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "vulnerableCategories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "triggerAppCategories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": ["level", "score", "summary"]
     }
   },
   "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]
