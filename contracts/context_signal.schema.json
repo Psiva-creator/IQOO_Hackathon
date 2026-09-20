@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextSignal",
+  "description": "On-device signal collected by data-sync and consumed by insight-engine",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "integer",
+      "description": "Epoch timestamp in milliseconds"
+    },
+    "appCategory": {
+      "type": "string",
+      "enum": ["Productivity", "Social", "Entertainment", "Communication", "Utility", "Other"]
+    },
+    "location": {
+      "type": "string",
+      "description": "Context location label"
+    },
+    "screenOnDuration": {
+      "type": "integer",
+      "description": "Continuous screen-on time in seconds"
+    }
+  },
+  "required": ["timestamp", "appCategory", "location", "screenOnDuration"]
+}

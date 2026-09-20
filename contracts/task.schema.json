@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Task",
+  "description": "Task data model created and stored by app-ui, consumed by insight-engine and data-sync",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "title": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["coding", "writing", "meeting", "reading", "planning", "exercise", "other"]
+    },
+    "createdAt": {
+      "type": "integer",
+      "description": "Epoch timestamp in milliseconds"
+    },
+    "completedAt": {
+      "type": ["integer", "null"],
+      "description": "Epoch timestamp in milliseconds, or null if incomplete"
+    },
+    "duration": {
+      "type": "integer",
+      "description": "Duration in seconds"
+    },
+    "location": {
+      "type": "string",
+      "description": "Context location label (e.g., Home Office, Library, Cafe)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "urgent"]
+    }
+  },
+  "required": ["id", "title", "type", "createdAt", "duration", "location", "priority"]
+}

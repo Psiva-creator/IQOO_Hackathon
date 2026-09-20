@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InsightOutput",
+  "description": "Insight data structure output by insight-engine and rendered by app-ui and data-sync",
+  "type": "object",
+  "properties": {
+    "peakHour": {
+      "type": "string",
+      "description": "Human readable time window of peak focus (e.g. '09:00 - 11:00 AM')"
+    },
+    "procrastinationTrigger": {
+      "type": "string",
+      "description": "Detected pattern or context where tasks stall or fail (e.g. 'Writing tasks scheduled after 3:00 PM')"
+    },
+    "bestContext": {
+      "type": "string",
+      "description": "Optimal environment/conditions for productivity"
+    },
+    "recommendation": {
+      "type": "string",
+      "description": "Actionable coaching advice for the user"
+    }
+  },
+  "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]
+}

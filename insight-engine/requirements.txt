@@ -1,0 +1,5 @@
+# insight-engine dependencies
+# Pure Python standard library is sufficient for on-device rule/statistical analytics
+# Optional for extended data exploration:
+# numpy>=1.24.0
+# pandas>=2.0.0
