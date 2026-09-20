@@ -113,6 +113,121 @@
         }
       },
       "required": ["level", "score", "summary"]
+    },
+    "productivityProfile": {
+      "type": "object",
+      "description": "Personal productivity profile summarizing temporal, context, and habit strengths",
+      "properties": {
+        "bestFocusWindow": {
+          "type": "string"
+        },
+        "bestTaskTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bestContext": {
+          "type": "string"
+        },
+        "weakestFocusWindow": {
+          "type": "string"
+        },
+        "peakProductivityScore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "averageCompletionRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "fatiguePattern": {
+          "type": "string"
+        },
+        "distractionPattern": {
+          "type": "string"
+        },
+        "profileConfidence": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"]
+        },
+        "taskTypeAnalysis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "taskType": {
+                "type": "string"
+              },
+              "strongestWindow": {
+                "type": "string"
+              },
+              "completionRate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "abandonmentRate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "avgDuration": {
+                "type": "number"
+              },
+              "productivityScore": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "totalSessions": {
+                "type": "integer"
+              }
+            },
+            "required": ["taskType", "strongestWindow", "completionRate", "abandonmentRate", "avgDuration", "productivityScore", "totalSessions"]
+          }
+        }
+      },
+      "required": [
+        "bestFocusWindow",
+        "bestTaskTypes",
+        "bestContext",
+        "weakestFocusWindow",
+        "peakProductivityScore",
+        "averageCompletionRate",
+        "fatiguePattern",
+        "distractionPattern",
+        "profileConfidence"
+      ]
+    },
+    "adaptiveRecommendations": {
+      "type": "array",
+      "description": "Ranked adaptive coaching recommendations derived from calculated profile metrics",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "advice": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["HIGH", "MEDIUM", "LOW"]
+          },
+          "impact": {
+            "type": "string",
+            "enum": ["HIGH", "MEDIUM", "LOW"]
+          }
+        },
+        "required": ["title", "advice", "reason", "priority", "impact"]
+      }
     }
   },
   "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]

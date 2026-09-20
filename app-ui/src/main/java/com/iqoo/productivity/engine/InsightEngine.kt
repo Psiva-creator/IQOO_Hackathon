@@ -28,6 +28,37 @@ data class DistractionSensitivity(
     val summary: String
 )
 
+data class TaskTypeAnalysis(
+    val taskType: String,
+    val strongestWindow: String,
+    val completionRate: Double,
+    val abandonmentRate: Double,
+    val avgDuration: Double,
+    val productivityScore: Int,
+    val totalSessions: Int
+)
+
+data class AdaptiveRecommendation(
+    val title: String,
+    val advice: String,
+    val reason: String,
+    val priority: String, // HIGH, MEDIUM, LOW
+    val impact: String   // HIGH, MEDIUM, LOW
+)
+
+data class ProductivityProfile(
+    val bestFocusWindow: String,
+    val bestTaskTypes: List<String>,
+    val bestContext: String,
+    val weakestFocusWindow: String,
+    val peakProductivityScore: Int,
+    val averageCompletionRate: Double,
+    val fatiguePattern: String,
+    val distractionPattern: String,
+    val profileConfidence: String, // LOW, MEDIUM, HIGH
+    val taskTypeAnalysis: List<TaskTypeAnalysis> = emptyList()
+)
+
 data class InsightResult(
     val peakHour: String,
     val procrastinationTrigger: String,
@@ -44,7 +75,19 @@ data class InsightResult(
         level = "LOW",
         score = 0,
         summary = "Low sensitivity"
-    )
+    ),
+    val productivityProfile: ProductivityProfile = ProductivityProfile(
+        bestFocusWindow = "Insufficient Data",
+        bestTaskTypes = emptyList(),
+        bestContext = "Track at least 5 tasks to calibrate",
+        weakestFocusWindow = "Insufficient Data",
+        peakProductivityScore = 0,
+        averageCompletionRate = 0.0,
+        fatiguePattern = "Insufficient sessions",
+        distractionPattern = "Insufficient sessions",
+        profileConfidence = "LOW"
+    ),
+    val adaptiveRecommendations: List<AdaptiveRecommendation> = emptyList()
 )
 
 /**
@@ -58,7 +101,29 @@ class InsightEngine(
 ) {
 
     fun analyze(): InsightResult {
-        if (tasks.isEmpty()) {
+        val totalTasks = tasks.size
+        val confidence = calculateConfidence()
+
+        if (totalTasks == 0) {
+            val emptyProfile = ProductivityProfile(
+                bestFocusWindow = "Insufficient Data",
+                bestTaskTypes = emptyList(),
+                bestContext = "Track at least 5 tasks to calibrate",
+                weakestFocusWindow = "Insufficient Data",
+                peakProductivityScore = 0,
+                averageCompletionRate = 0.0,
+                fatiguePattern = "Insufficient sessions to detect fatigue onset",
+                distractionPattern = "Insufficient sessions to detect distraction patterns",
+                profileConfidence = "LOW",
+                taskTypeAnalysis = emptyList()
+            )
+            val defaultRec = AdaptiveRecommendation(
+                title = "Calibrate Habit Profile",
+                advice = "Log at least 5 focus sessions across different hours to unlock adaptive coaching.",
+                reason = "Current data volume is insufficient to generate statistically sound behavioral recommendations.",
+                priority = "LOW",
+                impact = "LOW"
+            )
             return InsightResult(
                 peakHour = "Insufficient Data",
                 procrastinationTrigger = "No activity patterns detected yet",
@@ -75,7 +140,9 @@ class InsightEngine(
                     level = "LOW",
                     score = 0,
                     summary = "Insufficient task and signal data to evaluate distraction sensitivity."
-                )
+                ),
+                productivityProfile = emptyProfile,
+                adaptiveRecommendations = listOf(defaultRec)
             )
         }
 
@@ -86,15 +153,19 @@ class InsightEngine(
         val fatigue = detectFatigue()
         val distraction = detectDistractionSensitivity()
         val score = calculateProductivityScore()
-        val confidence = calculateConfidence()
         val heatmap = generateHourlyHeatmap()
-        val recommendation = generateSmartRecommendation(peakHour, contextInsights, fatigue, distraction)
+        val taskTypeAnalysis = analyzeTaskTypes()
+        val profile = buildProductivityProfile(peakHour, contextInsights, fatigue, distraction, heatmap, taskTypeAnalysis)
+        val adaptiveRecs = generateAdaptiveRecommendations(profile, contextInsights, fatigue, distraction)
+
+        val primaryRec = adaptiveRecs.first()
+        val topRecommendation = "${primaryRec.advice} ${primaryRec.reason}"
 
         return InsightResult(
             peakHour = peakHour,
             procrastinationTrigger = procrastinationTrigger,
             bestContext = bestContextStr,
-            recommendation = recommendation,
+            recommendation = topRecommendation,
             productivityScore = score,
             confidenceLevel = confidence,
             hourlyHeatmap = heatmap,
@@ -102,7 +173,9 @@ class InsightEngine(
             fatigueScore = fatigue.second,
             explanation = fatigue.third,
             contextInsights = contextInsights,
-            distractionSensitivity = distraction
+            distractionSensitivity = distraction,
+            productivityProfile = profile,
+            adaptiveRecommendations = adaptiveRecs
         )
     }
 
@@ -153,12 +226,12 @@ class InsightEngine(
             val typeName = worstType.name.lowercase().replaceFirstChar { it.uppercase() }
             "$typeName tasks scheduled after 3:00 PM (${(maxFailRate * 100).toInt()}% abandon rate)"
         } else {
-            "Low completion on unplanned afternoon sessions"
+            "Low afternoon completion on complex non-routine tasks"
         }
     }
 
     private fun analyzeContexts(): List<ContextInsight> {
-        val contextMap = mutableMapOf<String, Triple<Int, Int, MutableList<Long>>>() // loc -> (total, completed, durations)
+        val contextMap = mutableMapOf<String, Triple<Int, Int, MutableList<Long>>>()
         for (task in tasks) {
             val loc = task.location.ifBlank { "Home Office" }
             val existing = contextMap.getOrPut(loc) { Triple(0, 0, mutableListOf()) }
@@ -191,8 +264,7 @@ class InsightEngine(
         return "${best.context} (${best.completionRate}% completion across ${best.totalTasks} sessions)"
     }
 
-    private fun detectFatigue(): Triple<String, Int, String> { // Level, Score, Explanation
-        // 1. Screen-On Duration Strain (0-30 pts)
+    private fun detectFatigue(): Triple<String, Int, String> {
         var screenPts = 0
         var maxScreenSec = 0L
         if (contextSignals.isNotEmpty()) {
@@ -212,7 +284,6 @@ class InsightEngine(
             else if (avgTaskDur >= 1200) screenPts = 5
         }
 
-        // 2. Declining Completion Rate: Morning vs Afternoon (0-30 pts)
         val cal = Calendar.getInstance()
         val morningTasks = tasks.filter {
             cal.timeInMillis = it.createdAt
@@ -240,7 +311,6 @@ class InsightEngine(
             else if (drop >= 0.10) completionDropPts = 10
         }
 
-        // 3. Session Duration Degradation (0-20 pts)
         var durationShrinkPts = 0
         var mDur = 0.0
         var aDur = 0.0
@@ -251,7 +321,6 @@ class InsightEngine(
             else if (mDur > 0 && (aDur / mDur) <= 0.75) durationShrinkPts = 10
         }
 
-        // 4. Context/Task Switching & Distraction Intrusion (0-20 pts)
         var switchingPts = 0
         var nonProdSignals = 0
         if (contextSignals.isNotEmpty()) {
@@ -307,7 +376,7 @@ class InsightEngine(
     }
 
     private fun detectDistractionSensitivity(): DistractionSensitivity {
-        val typeFailures = mutableMapOf<TaskType, Pair<Int, Int>>() // type -> (total, failed)
+        val typeFailures = mutableMapOf<TaskType, Pair<Int, Int>>()
         for (task in tasks) {
             val curr = typeFailures.getOrPut(task.type) { Pair(0, 0) }
             val failInc = if (task.completedAt == null) 1 else 0
@@ -364,66 +433,266 @@ class InsightEngine(
         )
     }
 
-    private fun generateSmartRecommendation(
-        peakHour: String,
-        contextInsights: List<ContextInsight>,
-        fatigue: Triple<String, Int, String>,
-        distraction: DistractionSensitivity
-    ): String {
-        val priorityRank = mapOf(
-            TaskType.CODING to 0,
-            TaskType.WRITING to 1,
-            TaskType.PLANNING to 2,
-            TaskType.READING to 3,
-            TaskType.MEETING to 4,
-            TaskType.EXERCISE to 5,
-            TaskType.OTHER to 6
-        )
+    private fun analyzeTaskTypes(): List<TaskTypeAnalysis> {
+        val tasksByType = tasks.groupBy { it.type }
+        val results = mutableListOf<TaskTypeAnalysis>()
 
-        val typeRates = mutableMapOf<TaskType, Pair<Int, Int>>()
-        for (task in tasks) {
-            val curr = typeRates.getOrPut(task.type) { Pair(0, 0) }
-            val compInc = if (task.completedAt != null) 1 else 0
-            typeRates[task.type] = Pair(curr.first + 1, curr.second + compInc)
+        for ((type, typeTasks) in tasksByType) {
+            val total = typeTasks.size
+            val completed = typeTasks.count { it.completedAt != null }
+            val failed = total - completed
+            val completionRate = if (total > 0) Math.round((completed.toDouble() / total) * 1000.0) / 10.0 else 0.0
+            val abandonRate = if (total > 0) Math.round((failed.toDouble() / total) * 1000.0) / 10.0 else 0.0
+            val avgDur = if (total > 0) Math.round((typeTasks.map { it.duration }.sum().toDouble() / total) * 10.0) / 10.0 else 0.0
+            val prodScore = ((completionRate * 0.7) + Math.min(1.0, avgDur / 3600.0) * 30.0).toInt().coerceIn(0, 100)
+
+            var strongestWindow = "Insufficient data"
+            if (total >= 2) {
+                val cal = Calendar.getInstance()
+                val hourlyAttempts = mutableMapOf<Int, Int>()
+                val hourlyCompleted = mutableMapOf<Int, Int>()
+
+                for (t in typeTasks) {
+                    cal.timeInMillis = t.createdAt
+                    val h = cal.get(Calendar.HOUR_OF_DAY)
+                    hourlyAttempts[h] = (hourlyAttempts[h] ?: 0) + 1
+                    if (t.completedAt != null) {
+                        hourlyCompleted[h] = (hourlyCompleted[h] ?: 0) + 1
+                    }
+                }
+
+                var bestHour: Int? = null
+                var bestHourRate = -1.0
+                for (h in 0 until 24) {
+                    val attInWindow = (hourlyAttempts[h] ?: 0) + (hourlyAttempts[(h + 1) % 24] ?: 0)
+                    val compInWindow = (hourlyCompleted[h] ?: 0) + (hourlyCompleted[(h + 1) % 24] ?: 0)
+                    if (attInWindow > 0 && compInWindow > 0) {
+                        val rate = compInWindow.toDouble() / attInWindow
+                        if (rate > bestHourRate) {
+                            bestHourRate = rate
+                            bestHour = h
+                        }
+                    }
+                }
+
+                if (bestHour != null) {
+                    strongestWindow = String.format("%02d:00 - %02d:00", bestHour, (bestHour + 2) % 24)
+                }
+            }
+
+            results.add(
+                TaskTypeAnalysis(
+                    taskType = type.name.lowercase(),
+                    strongestWindow = strongestWindow,
+                    completionRate = completionRate,
+                    abandonmentRate = abandonRate,
+                    avgDuration = avgDur,
+                    productivityScore = prodScore,
+                    totalSessions = total
+                )
+            )
         }
 
-        var bestType = TaskType.CODING
-        var bestTypeRate = -1
-        for ((type, stats) in typeRates) {
-            if (stats.first >= 2) {
-                val r = ((stats.second.toDouble() / stats.first) * 100).toInt()
-                if (r > bestTypeRate || (r == bestTypeRate && (priorityRank[type] ?: 99) < (priorityRank[bestType] ?: 99))) {
-                    bestTypeRate = r
-                    bestType = type
+        results.sortWith(compareByDescending<TaskTypeAnalysis> { it.completionRate }.thenByDescending { it.totalSessions })
+        return results
+    }
+
+    private fun detectWeakestFocusWindow(): String {
+        val cal = Calendar.getInstance()
+        val hourlyAttempts = mutableMapOf<Int, Int>()
+        val hourlyFailed = mutableMapOf<Int, Int>()
+
+        for (task in tasks) {
+            cal.timeInMillis = task.createdAt
+            val h = cal.get(Calendar.HOUR_OF_DAY)
+            hourlyAttempts[h] = (hourlyAttempts[h] ?: 0) + 1
+            if (task.completedAt == null) {
+                hourlyFailed[h] = (hourlyFailed[h] ?: 0) + 1
+            }
+        }
+
+        var worstHour: Int? = null
+        var highestFailRate = 0.0
+
+        for (h in 0 until 24) {
+            val attInWindow = (hourlyAttempts[h] ?: 0) + (hourlyAttempts[(h + 1) % 24] ?: 0)
+            val failInWindow = (hourlyFailed[h] ?: 0) + (hourlyFailed[(h + 1) % 24] ?: 0)
+            if (attInWindow >= 2) {
+                val rate = failInWindow.toDouble() / attInWindow
+                if (rate > highestFailRate) {
+                    highestFailRate = rate
+                    worstHour = h
                 }
             }
         }
 
-        val bestCtx = contextInsights.firstOrNull() ?: ContextInsight("Home Office", 85.0, 5, 4, 1800.0, "Optimal")
-        val worstCtx = if (contextInsights.size > 1) contextInsights.last() else null
+        return if (worstHour != null && highestFailRate >= 0.30) {
+            String.format("%02d:00 - %02d:00", worstHour, (worstHour + 2) % 24)
+        } else {
+            "None detected"
+        }
+    }
 
-        val parts = mutableListOf<String>()
-        val peakClean = peakHour.split("(")[0].trim()
-        val bestTypeName = bestType.name.lowercase()
-        parts.add("Your $bestTypeName completion rate peaks between $peakClean ($bestTypeRate% completion in ${bestCtx.context}).")
+    private fun buildProductivityProfile(
+        peakHour: String,
+        contextInsights: List<ContextInsight>,
+        fatigue: Triple<String, Int, String>,
+        distraction: DistractionSensitivity,
+        heatmap: Map<Int, Int>,
+        taskTypeAnalysis: List<TaskTypeAnalysis>
+    ): ProductivityProfile {
+        val total = tasks.size
+        val profileConfidence = calculateProfileConfidence()
 
-        val vulnerableStr = if (distraction.vulnerableCategories.isNotEmpty()) distraction.vulnerableCategories.joinToString(", ") else "complex"
-        if (worstCtx != null && worstCtx.completionRate < bestCtx.completionRate) {
-            parts.add("In contrast, $vulnerableStr sessions drop to ${worstCtx.completionRate}% completion in ${worstCtx.context}.")
+        if (total < 5) {
+            return ProductivityProfile(
+                bestFocusWindow = "Insufficient Data",
+                bestTaskTypes = emptyList(),
+                bestContext = "Track at least 5 tasks to calibrate",
+                weakestFocusWindow = "Insufficient Data",
+                peakProductivityScore = 0,
+                averageCompletionRate = 0.0,
+                fatiguePattern = "Insufficient sessions to detect fatigue onset",
+                distractionPattern = "Insufficient sessions to detect distraction patterns",
+                profileConfidence = "LOW",
+                taskTypeAnalysis = taskTypeAnalysis
+            )
+        }
+
+        val bestWindow = peakHour.split("(")[0].trim()
+        val bestTypes = taskTypeAnalysis.filter { it.completionRate >= 70.0 && it.totalSessions >= 2 }.map { it.taskType }
+        val bestCtx = contextInsights.firstOrNull()?.context ?: "Home Office"
+        val weakestWindow = detectWeakestFocusWindow()
+        val peakScore = heatmap.values.maxOrNull() ?: 0
+        val completedCount = tasks.count { it.completedAt != null }
+        val avgCompletion = if (total > 0) Math.round((completedCount.toDouble() / total) * 1000.0) / 10.0 else 0.0
+
+        val fatigueScore = fatigue.second
+        val fatiguePattern = when {
+            fatigueScore >= 65 -> "Severe fatigue peaks after ${weakestWindow.split(" - ")[0]} (score: $fatigueScore/100) after extended screen sessions."
+            fatigueScore >= 35 -> "Moderate fatigue appears in late afternoon (score: $fatigueScore/100) with focus durations shrinking."
+            else -> "Stable energy profile across daytime work blocks with minimal session shrinkage."
+        }
+
+        val distractionPattern = when {
+            distraction.vulnerableCategories.isNotEmpty() && distraction.triggerAppCategories.isNotEmpty() ->
+                "High vulnerability on ${distraction.vulnerableCategories.joinToString(", ")} when ${distraction.triggerAppCategories.joinToString(", ")} apps are accessed."
+            distraction.vulnerableCategories.isNotEmpty() ->
+                "${distraction.vulnerableCategories.joinToString(", ").replaceFirstChar { it.uppercase() }} tasks show elevated abandonment outside optimal environments."
+            else -> "Low distraction susceptibility across tracked contexts."
+        }
+
+        return ProductivityProfile(
+            bestFocusWindow = bestWindow,
+            bestTaskTypes = bestTypes,
+            bestContext = bestCtx,
+            weakestFocusWindow = weakestWindow,
+            peakProductivityScore = peakScore,
+            averageCompletionRate = avgCompletion,
+            fatiguePattern = fatiguePattern,
+            distractionPattern = distractionPattern,
+            profileConfidence = profileConfidence,
+            taskTypeAnalysis = taskTypeAnalysis
+        )
+    }
+
+    private fun generateAdaptiveRecommendations(
+        profile: ProductivityProfile,
+        contextInsights: List<ContextInsight>,
+        fatigue: Triple<String, Int, String>,
+        distraction: DistractionSensitivity
+    ): List<AdaptiveRecommendation> {
+        val candidates = mutableListOf<Pair<Int, AdaptiveRecommendation>>()
+
+        if (profile.bestFocusWindow != "Insufficient Data" && profile.bestTaskTypes.isNotEmpty()) {
+            val primaryType = profile.bestTaskTypes.first()
+            val typeStat = profile.taskTypeAnalysis.find { it.taskType == primaryType }
+            val rateStr = if (typeStat != null) "${typeStat.completionRate.toInt()}%" else "peak"
+            candidates.add(
+                Pair(
+                    95,
+                    AdaptiveRecommendation(
+                        title = "Protect Peak ${primaryType.replaceFirstChar { it.uppercase() }} Window",
+                        advice = "Schedule demanding $primaryType tasks between ${profile.bestFocusWindow} in ${profile.bestContext}.",
+                        reason = "Your $primaryType completion rate reaches $rateStr in ${profile.bestContext} during this window.",
+                        priority = "HIGH",
+                        impact = "HIGH"
+                    )
+                )
+            )
         }
 
         val fatigueScore = fatigue.second
-        if (fatigueScore >= 65) {
-            parts.add("High afternoon fatigue (score: $fatigueScore/100) significantly degrades focus after extended screen sessions.")
-            val targetTask = if (worstCtx != null) vulnerableStr else bestTypeName
-            parts.add("Consider scheduling difficult $targetTask tasks before 11:00 AM in ${bestCtx.context}, and limit continuous screen blocks to 45 minutes.")
-        } else if (fatigueScore >= 35) {
-            parts.add("Moderate fatigue (score: $fatigueScore/100) sets in during late afternoon. Schedule high-priority deep work in ${bestCtx.context} during your morning peak.")
-        } else {
-            parts.add("Maintain your consistent cadence by protecting your $peakClean block for high-priority initiatives.")
+        if (fatigueScore >= 35) {
+            val isHigh = fatigueScore >= 65
+            val weakStart = if (profile.weakestFocusWindow != "None detected") profile.weakestFocusWindow.split(" - ")[0] else "15:00"
+            candidates.add(
+                Pair(
+                    if (isHigh) 90 else 70,
+                    AdaptiveRecommendation(
+                        title = "Fatigue Break Pacing",
+                        advice = "Cap afternoon focus sessions at 45 minutes and step away before $weakStart.",
+                        reason = profile.fatiguePattern,
+                        priority = if (isHigh) "HIGH" else "MEDIUM",
+                        impact = if (isHigh) "HIGH" else "MEDIUM"
+                    )
+                )
+            )
         }
 
-        return parts.joinToString(" ")
+        if (contextInsights.size >= 2) {
+            val bestC = contextInsights.first()
+            val worstC = contextInsights.last()
+            if (bestC.completionRate - worstC.completionRate >= 25.0) {
+                val vulnerableType = distraction.vulnerableCategories.firstOrNull() ?: "complex"
+                candidates.add(
+                    Pair(
+                        80,
+                        AdaptiveRecommendation(
+                            title = "Shift Context for Vulnerable Tasks",
+                            advice = "Relocate $vulnerableType sessions from ${worstC.context} to ${bestC.context}.",
+                            reason = "Completion rate is ${bestC.completionRate}% in ${bestC.context} versus ${worstC.completionRate}% in ${worstC.context}.",
+                            priority = "MEDIUM",
+                            impact = if (bestC.completionRate - worstC.completionRate >= 40.0) "HIGH" else "MEDIUM"
+                        )
+                    )
+                )
+            }
+        }
+
+        if (distraction.level in listOf("HIGH", "MEDIUM") && distraction.triggerAppCategories.isNotEmpty()) {
+            val triggers = distraction.triggerAppCategories.joinToString(", ")
+            candidates.add(
+                Pair(
+                    75,
+                    AdaptiveRecommendation(
+                        title = "Silence Interrupting App Categories",
+                        advice = "Enable Do Not Disturb to block $triggers alerts during focus blocks.",
+                        reason = profile.distractionPattern,
+                        priority = "MEDIUM",
+                        impact = "MEDIUM"
+                    )
+                )
+            )
+        }
+
+        if (candidates.isEmpty()) {
+            candidates.add(
+                Pair(
+                    50,
+                    AdaptiveRecommendation(
+                        title = "Maintain Rhythm",
+                        advice = "Continue consistent task tracking in your ${profile.bestFocusWindow} focus block.",
+                        reason = "Current session distribution shows stable pacing and low distraction interference.",
+                        priority = "LOW",
+                        impact = "LOW"
+                    )
+                )
+            )
+        }
+
+        candidates.sortByDescending { it.first }
+        return candidates.take(3).map { it.second }
     }
 
     private fun calculateProductivityScore(): Int {
@@ -439,6 +708,15 @@ class InsightEngine(
             count < 5 -> "Calibrating"
             count < 20 -> "Medium"
             else -> "High"
+        }
+    }
+
+    private fun calculateProfileConfidence(): String {
+        val count = tasks.size
+        return when {
+            count < 5 -> "LOW"
+            count <= 15 -> "MEDIUM"
+            else -> "HIGH"
         }
     }
 

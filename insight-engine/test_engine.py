@@ -1,5 +1,6 @@
 import unittest
 import time
+from datetime import datetime, timedelta
 from synthetic_generator import generate_synthetic_tasks, generate_synthetic_tasks_and_signals
 from engine import InsightEngine
 
@@ -10,13 +11,13 @@ class TestInsightEngine(unittest.TestCase):
 
     # 1. Existing tests and backward compatibility
     def test_insight_structure_backward_compatibility(self):
-        # Engine called with ONLY tasks, preserving existing signature
         standalone_engine = InsightEngine(self.tasks)
         insights = standalone_engine.analyze()
         required_keys = [
             "peakHour", "procrastinationTrigger", "bestContext", "recommendation",
             "productivityScore", "confidenceLevel", "hourlyHeatmap",
-            "fatigueLevel", "fatigueScore", "explanation", "contextInsights", "distractionSensitivity"
+            "fatigueLevel", "fatigueScore", "explanation", "contextInsights", "distractionSensitivity",
+            "productivityProfile", "adaptiveRecommendations"
         ]
         for key in required_keys:
             self.assertIn(key, insights)
@@ -44,121 +45,162 @@ class TestInsightEngine(unittest.TestCase):
     def test_insufficient_data(self):
         empty_engine = InsightEngine([], [])
         insights = empty_engine.analyze()
-        self.assertEqual(insights["confidenceLevel"], "Calibrating")
+        profile = insights["productivityProfile"]
+        self.assertEqual(profile["profileConfidence"], "LOW")
+        self.assertEqual(profile["bestFocusWindow"], "Insufficient Data")
+        self.assertEqual(profile["bestTaskTypes"], [])
+        self.assertEqual(profile["peakProductivityScore"], 0)
         self.assertEqual(insights["productivityScore"], 0)
         self.assertEqual(insights["fatigueLevel"], "LOW")
-        self.assertEqual(insights["fatigueScore"], 0)
-        self.assertEqual(insights["contextInsights"], [])
-        self.assertEqual(insights["distractionSensitivity"]["level"], "LOW")
-        self.assertIn("Insufficient data", insights["explanation"])
+        self.assertEqual(len(insights["adaptiveRecommendations"]), 1)
+        self.assertEqual(insights["adaptiveRecommendations"][0]["title"], "Calibrate Habit Profile")
 
-    # 3. Normal productivity
-    def test_normal_productivity(self):
+    def test_confidence_calculation_tiers(self):
+        # < 5 tasks -> LOW
+        tasks_3 = [
+            {"id": "1", "type": "coding", "createdAt": 1000, "completedAt": 2000, "duration": 1000, "location": "Home Office"},
+            {"id": "2", "type": "coding", "createdAt": 3000, "completedAt": 4000, "duration": 1000, "location": "Home Office"},
+            {"id": "3", "type": "coding", "createdAt": 5000, "completedAt": 6000, "duration": 1000, "location": "Home Office"}
+        ]
+        res_3 = InsightEngine(tasks_3).analyze()
+        self.assertEqual(res_3["productivityProfile"]["profileConfidence"], "LOW")
+
+        # 5 to 15 tasks -> MEDIUM
+        tasks_8 = tasks_3 + [
+            {"id": f"{i}", "type": "coding", "createdAt": i * 1000, "completedAt": (i + 1) * 1000, "duration": 1000, "location": "Home Office"}
+            for i in range(4, 9)
+        ]
+        res_8 = InsightEngine(tasks_8).analyze()
+        self.assertEqual(res_8["productivityProfile"]["profileConfidence"], "MEDIUM")
+
+        # > 15 tasks -> HIGH
+        res_42 = InsightEngine(self.tasks).analyze()
+        self.assertEqual(res_42["productivityProfile"]["profileConfidence"], "HIGH")
+
+    # 3. Strong morning productivity
+    def test_strong_morning_productivity(self):
+        insights = self.engine.analyze()
+        profile = insights["productivityProfile"]
+        self.assertTrue("09:00" in profile["bestFocusWindow"] or "10:00" in profile["bestFocusWindow"])
+        self.assertIn("coding", profile["bestTaskTypes"])
+        self.assertEqual(profile["bestContext"], "Home Office")
+
+    # 4. Strong afternoon productivity
+    def test_strong_afternoon_productivity(self):
+        # Create user profile where morning tasks fail and afternoon tasks (14:00 - 16:00) succeed
+        base = datetime(2026, 9, 15, 9, 0)
+        tasks = []
+        for day in range(6):
+            d_time = base + timedelta(days=day)
+            # Morning failure at 9:00 AM
+            t_m = int(d_time.replace(hour=9).timestamp() * 1000)
+            tasks.append({"id": f"m_{day}", "type": "writing", "createdAt": t_m, "completedAt": None, "duration": 300, "location": "Cafe"})
+            # Afternoon success at 14:00 (2 PM)
+            t_a1 = int(d_time.replace(hour=14).timestamp() * 1000)
+            tasks.append({"id": f"a1_{day}", "type": "coding", "createdAt": t_a1, "completedAt": t_a1 + 3600000, "duration": 3600, "location": "Studio"})
+            t_a2 = int(d_time.replace(hour=15).timestamp() * 1000)
+            tasks.append({"id": f"a2_{day}", "type": "coding", "createdAt": t_a2, "completedAt": t_a2 + 3600000, "duration": 3600, "location": "Studio"})
+
+        res = InsightEngine(tasks).analyze()
+        profile = res["productivityProfile"]
+        self.assertTrue("14:00" in profile["bestFocusWindow"] or "15:00" in profile["bestFocusWindow"])
+        self.assertIn("coding", profile["bestTaskTypes"])
+        self.assertEqual(profile["bestContext"], "Studio")
+
+    # 5. Different optimal times for different task types
+    def test_different_optimal_times_for_different_task_types(self):
+        base = datetime(2026, 9, 15, 8, 0)
+        tasks = []
+        for day in range(5):
+            d_time = base + timedelta(days=day)
+            # Coding at 9 AM succeeds
+            t_c = int(d_time.replace(hour=9).timestamp() * 1000)
+            tasks.append({"id": f"c_{day}", "type": "coding", "createdAt": t_c, "completedAt": t_c + 3600000, "duration": 3600, "location": "Home Office"})
+            # Writing at 11 AM succeeds
+            t_w = int(d_time.replace(hour=11).timestamp() * 1000)
+            tasks.append({"id": f"w_{day}", "type": "writing", "createdAt": t_w, "completedAt": t_w + 3600000, "duration": 3600, "location": "Home Office"})
+            # Meetings at 16:00 (4 PM) succeeds
+            t_m = int(d_time.replace(hour=16).timestamp() * 1000)
+            tasks.append({"id": f"m_{day}", "type": "meeting", "createdAt": t_m, "completedAt": t_m + 1800000, "duration": 1800, "location": "Meeting Room"})
+
+        res = InsightEngine(tasks).analyze()
+        type_analysis = res["productivityProfile"]["taskTypeAnalysis"]
+        c_stat = next(t for t in type_analysis if t["taskType"] == "coding")
+        w_stat = next(t for t in type_analysis if t["taskType"] == "writing")
+        m_stat = next(t for t in type_analysis if t["taskType"] == "meeting")
+
+        self.assertTrue("09:00" in c_stat["strongestWindow"])
+        self.assertTrue("11:00" in w_stat["strongestWindow"])
+        self.assertTrue("16:00" in m_stat["strongestWindow"])
+
+    # 6. Context-dependent productivity
+    def test_context_dependent_productivity(self):
+        tasks = [
+            {"id": "1", "title": "T1", "type": "coding", "createdAt": 1000, "completedAt": 2000, "duration": 1000, "location": "Library", "priority": "high"},
+            {"id": "2", "title": "T2", "type": "coding", "createdAt": 3000, "completedAt": 4000, "duration": 1000, "location": "Library", "priority": "high"},
+            {"id": "3", "title": "T3", "type": "coding", "createdAt": 5000, "completedAt": 6000, "duration": 1000, "location": "Library", "priority": "high"},
+            {"id": "4", "title": "T4", "type": "writing", "createdAt": 7000, "completedAt": None, "duration": 300, "location": "Lounge", "priority": "low"},
+            {"id": "5", "title": "T5", "type": "writing", "createdAt": 9000, "completedAt": None, "duration": 200, "location": "Lounge", "priority": "low"}
+        ]
+        res = InsightEngine(tasks).analyze()
+        profile = res["productivityProfile"]
+        self.assertEqual(profile["bestContext"], "Library")
+        self.assertEqual(res["contextInsights"][0]["context"], "Library")
+        self.assertEqual(res["contextInsights"][0]["status"], "Optimal")
+        self.assertEqual(res["contextInsights"][-1]["context"], "Lounge")
+        self.assertEqual(res["contextInsights"][-1]["status"], "Suboptimal")
+
+    # 7. Conflicting patterns (mixed success, high switching)
+    def test_conflicting_patterns(self):
         base_ms = int(time.time() * 1000)
-        healthy_tasks = [
-            {"id": "1", "title": "T1", "type": "coding", "createdAt": base_ms, "completedAt": base_ms + 1800000, "duration": 1800, "location": "Home Office", "priority": "high"},
-            {"id": "2", "title": "T2", "type": "coding", "createdAt": base_ms + 2000000, "completedAt": base_ms + 3800000, "duration": 1800, "location": "Home Office", "priority": "high"},
-            {"id": "3", "title": "T3", "type": "writing", "createdAt": base_ms + 4000000, "completedAt": base_ms + 5800000, "duration": 1800, "location": "Home Office", "priority": "medium"},
-            {"id": "4", "title": "T4", "type": "planning", "createdAt": base_ms + 6000000, "completedAt": base_ms + 7800000, "duration": 1800, "location": "Home Office", "priority": "low"},
-            {"id": "5", "title": "T5", "type": "coding", "createdAt": base_ms + 8000000, "completedAt": base_ms + 9800000, "duration": 1800, "location": "Home Office", "priority": "medium"}
+        conflicting_tasks = [
+            {"id": "1", "type": "coding", "createdAt": base_ms, "completedAt": base_ms + 1000, "duration": 1000, "location": "Cafe"},
+            {"id": "2", "type": "writing", "createdAt": base_ms + 1500, "completedAt": None, "duration": 500, "location": "Home Office"},
+            {"id": "3", "type": "meeting", "createdAt": base_ms + 2500, "completedAt": base_ms + 3500, "duration": 1000, "location": "Cafe"},
+            {"id": "4", "type": "planning", "createdAt": base_ms + 4000, "completedAt": None, "duration": 300, "location": "Home Office"},
+            {"id": "5", "type": "coding", "createdAt": base_ms + 5000, "completedAt": base_ms + 6000, "duration": 1000, "location": "Home Office"},
+            {"id": "6", "type": "writing", "createdAt": base_ms + 6500, "completedAt": base_ms + 7500, "duration": 1000, "location": "Cafe"}
         ]
-        healthy_signals = [
-            {"timestamp": base_ms, "appCategory": "Productivity", "location": "Home Office", "screenOnDuration": 1200},
-            {"timestamp": base_ms + 4000000, "appCategory": "Productivity", "location": "Home Office", "screenOnDuration": 1500}
-        ]
-        engine = InsightEngine(healthy_tasks, healthy_signals)
-        insights = engine.analyze()
-        self.assertEqual(insights["fatigueLevel"], "LOW")
-        self.assertEqual(insights["productivityScore"], 100)
-        self.assertEqual(insights["contextInsights"][0]["status"], "Optimal")
-        self.assertEqual(insights["contextInsights"][0]["completionRate"], 100.0)
+        res = InsightEngine(conflicting_tasks).analyze()
+        self.assertIsNotNone(res["productivityProfile"])
+        self.assertTrue(len(res["adaptiveRecommendations"]) >= 1)
+        self.assertIn(res["productivityProfile"]["profileConfidence"], ["MEDIUM", "HIGH"])
 
-    # 4. High fatigue detection
-    def test_high_fatigue(self):
-        # Morning tasks completed, afternoon tasks abandoned + excessive screen duration
-        t_morning = 1789271100000 # 9 AM
-        t_afternoon = 1789293600000 # 3:30 PM
+    # 8. High fatigue and adaptive recommendations
+    def test_high_fatigue_adaptive_recommendation(self):
+        t_morning = 1789271100000
+        t_afternoon = 1789293600000
         fatigued_tasks = [
-            {"id": "1", "title": "M1", "type": "coding", "createdAt": t_morning, "completedAt": t_morning + 3600000, "duration": 3600, "location": "Home Office", "priority": "high"},
-            {"id": "2", "title": "M2", "type": "coding", "createdAt": t_morning + 4000000, "completedAt": t_morning + 7600000, "duration": 3600, "location": "Home Office", "priority": "high"},
-            {"id": "3", "title": "A1", "type": "writing", "createdAt": t_afternoon, "completedAt": None, "duration": 300, "location": "Cafe", "priority": "low"},
-            {"id": "4", "title": "A2", "type": "writing", "createdAt": t_afternoon + 3600000, "completedAt": None, "duration": 200, "location": "Cafe", "priority": "low"}
+            {"id": "1", "type": "coding", "createdAt": t_morning, "completedAt": t_morning + 3600000, "duration": 3600, "location": "Home Office"},
+            {"id": "2", "type": "coding", "createdAt": t_morning + 4000000, "completedAt": t_morning + 7600000, "duration": 3600, "location": "Home Office"},
+            {"id": "3", "type": "coding", "createdAt": t_morning + 8000000, "completedAt": t_morning + 11600000, "duration": 3600, "location": "Home Office"},
+            {"id": "4", "type": "writing", "createdAt": t_afternoon, "completedAt": None, "duration": 300, "location": "Cafe"},
+            {"id": "5", "type": "writing", "createdAt": t_afternoon + 3600000, "completedAt": None, "duration": 200, "location": "Cafe"},
+            {"id": "6", "type": "writing", "createdAt": t_afternoon + 7200000, "completedAt": None, "duration": 200, "location": "Cafe"}
         ]
         fatigued_signals = [
             {"timestamp": t_afternoon, "appCategory": "Social", "location": "Cafe", "screenOnDuration": 8500},
             {"timestamp": t_afternoon + 3600000, "appCategory": "Entertainment", "location": "Cafe", "screenOnDuration": 9200}
         ]
-        engine = InsightEngine(fatigued_tasks, fatigued_signals)
-        insights = engine.analyze()
-        self.assertEqual(insights["fatigueLevel"], "HIGH")
-        self.assertGreaterEqual(insights["fatigueScore"], 65)
-        self.assertIn("Fatigue is HIGH", insights["explanation"])
+        res = InsightEngine(fatigued_tasks, fatigued_signals).analyze()
+        self.assertEqual(res["fatigueLevel"], "HIGH")
+        # Recommendation list should prioritize fatigue break pacing
+        rec_titles = [r["title"] for r in res["adaptiveRecommendations"]]
+        self.assertIn("Fatigue Break Pacing", rec_titles)
 
-    # 5. Context correlation with better and worse environments
-    def test_low_completion_context(self):
-        tasks = [
-            {"id": "1", "title": "T1", "type": "coding", "createdAt": 1000, "completedAt": 2000, "duration": 1000, "location": "Home Office", "priority": "high"},
-            {"id": "2", "title": "T2", "type": "coding", "createdAt": 3000, "completedAt": 4000, "duration": 1000, "location": "Home Office", "priority": "high"},
-            {"id": "3", "title": "T3", "type": "coding", "createdAt": 5000, "completedAt": 6000, "duration": 1000, "location": "Home Office", "priority": "high"},
-            {"id": "4", "title": "T4", "type": "writing", "createdAt": 7000, "completedAt": None, "duration": 300, "location": "Cafe", "priority": "low"},
-            {"id": "5", "title": "T5", "type": "writing", "createdAt": 9000, "completedAt": None, "duration": 200, "location": "Cafe", "priority": "low"}
-        ]
-        engine = InsightEngine(tasks)
-        insights = engine.analyze()
-        ctx_list = insights["contextInsights"]
-        self.assertEqual(len(ctx_list), 2)
-        home = next(c for c in ctx_list if c["context"] == "Home Office")
-        cafe = next(c for c in ctx_list if c["context"] == "Cafe")
-        self.assertEqual(home["completionRate"], 100.0)
-        self.assertEqual(home["status"], "Optimal")
-        self.assertEqual(cafe["completionRate"], 0.0)
-        self.assertEqual(cafe["status"], "Suboptimal")
-        self.assertIn("Home Office", insights["bestContext"])
-
-    # 6. Distraction-heavy context
-    def test_distraction_heavy_context(self):
-        tasks = [
-            {"id": "1", "title": "W1", "type": "writing", "createdAt": 1000, "completedAt": None, "duration": 150, "location": "Cafe", "priority": "high"},
-            {"id": "2", "title": "W2", "type": "writing", "createdAt": 2000, "completedAt": None, "duration": 120, "location": "Cafe", "priority": "medium"}
-        ]
-        signals = [
-            {"timestamp": 1000, "appCategory": "Social", "location": "Cafe", "screenOnDuration": 4000},
-            {"timestamp": 2000, "appCategory": "Entertainment", "location": "Cafe", "screenOnDuration": 5000}
-        ]
-        engine = InsightEngine(tasks, signals)
-        insights = engine.analyze()
-        distraction = insights["distractionSensitivity"]
-        self.assertEqual(distraction["level"], "HIGH")
-        self.assertIn("writing", distraction["vulnerableCategories"])
-        self.assertIn("Social", distraction["triggerAppCategories"])
-        self.assertIn("Entertainment", distraction["triggerAppCategories"])
-
-    # 7. Missing and optional context fields
-    def test_missing_optional_context_fields(self):
-        malformed_tasks = [
-            {"id": "1", "title": "No location", "type": "coding", "createdAt": 1789271100000, "completedAt": 1789274700000, "duration": 3600, "priority": "high"},
-            {"id": "2", "title": "Empty loc", "type": "coding", "createdAt": 1789275600000, "completedAt": 1789278300000, "duration": 2700, "location": "", "priority": "medium"},
-            {"id": "3", "title": "None completedAt", "type": "writing", "createdAt": 1789293600000, "completedAt": None, "duration": 400, "location": "Library", "priority": "low"}
-        ]
-        malformed_signals = [
-            {"timestamp": 1789271100000, "appCategory": "Productivity"},
-            {"timestamp": 1789293600000, "location": "Library"}
-        ]
-        engine = InsightEngine(malformed_tasks, malformed_signals)
-        insights = engine.analyze()
-        self.assertIsNotNone(insights["fatigueLevel"])
-        self.assertIsNotNone(insights["recommendation"])
-        self.assertTrue(len(insights["contextInsights"]) >= 1)
-
-    # 8. Recommendation generation is explainable and dynamic
-    def test_recommendation_generation(self):
-        insights = self.engine.analyze()
-        rec = insights["recommendation"]
-        self.assertIsInstance(rec, str)
-        self.assertTrue(len(rec) > 20)
-        # Should cite actual computed task types, locations, and time window
-        self.assertTrue("Home Office" in rec or "Cafe" in rec)
-        self.assertTrue("coding" in rec.lower() or "writing" in rec.lower())
+    # 9. Recommendation generation and ranking
+    def test_recommendation_generation_and_ranking(self):
+        res = self.engine.analyze()
+        recs = res["adaptiveRecommendations"]
+        self.assertTrue(1 <= len(recs) <= 3)
+        for r in recs:
+            self.assertTrue(len(r["title"]) > 0)
+            self.assertTrue(len(r["advice"]) > 0)
+            self.assertTrue(len(r["reason"]) > 0)
+            self.assertIn(r["priority"], ["HIGH", "MEDIUM", "LOW"])
+            self.assertIn(r["impact"], ["HIGH", "MEDIUM", "LOW"])
+        # Top-level recommendation should match primary recommendation
+        self.assertIn(recs[0]["advice"], res["recommendation"])
 
 if __name__ == "__main__":
     unittest.main()

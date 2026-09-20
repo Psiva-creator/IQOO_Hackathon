@@ -1,6 +1,6 @@
 """
 On-Device Habit & Productivity Insight Engine
-Context-Aware Productivity, Fatigue, and Distraction Detection.
+Context-Aware Productivity, Fatigue, Personal Productivity Profile & Adaptive Recommendations.
 Pure statistical and heuristic analytics running 100% on-device.
 """
 
@@ -14,7 +14,10 @@ class InsightEngine:
         self.context_signals = context_signals or []
 
     def analyze(self) -> Dict[str, Any]:
-        if not self.tasks:
+        total_tasks = len(self.tasks)
+        confidence = self._calculate_confidence()
+
+        if total_tasks == 0:
             return {
                 "peakHour": "Insufficient Data",
                 "procrastinationTrigger": "No activity patterns detected yet",
@@ -33,7 +36,28 @@ class InsightEngine:
                     "vulnerableCategories": [],
                     "triggerAppCategories": [],
                     "summary": "Insufficient task and signal data to evaluate distraction sensitivity."
-                }
+                },
+                "productivityProfile": {
+                    "bestFocusWindow": "Insufficient Data",
+                    "bestTaskTypes": [],
+                    "bestContext": "Track at least 5 tasks to calibrate",
+                    "weakestFocusWindow": "Insufficient Data",
+                    "peakProductivityScore": 0,
+                    "averageCompletionRate": 0.0,
+                    "fatiguePattern": "Insufficient sessions to detect fatigue onset",
+                    "distractionPattern": "Insufficient sessions to detect distraction patterns",
+                    "profileConfidence": "LOW",
+                    "taskTypeAnalysis": []
+                },
+                "adaptiveRecommendations": [
+                    {
+                        "title": "Calibrate Habit Profile",
+                        "advice": "Log at least 5 focus sessions across different hours to unlock adaptive coaching.",
+                        "reason": "Current data volume is insufficient to generate statistically sound behavioral recommendations.",
+                        "priority": "LOW",
+                        "impact": "LOW"
+                    }
+                ]
             }
 
         peak_hour = self._detect_peak_hour()
@@ -43,15 +67,20 @@ class InsightEngine:
         fatigue = self._detect_fatigue()
         distraction = self._detect_distraction_sensitivity()
         score = self._calculate_productivity_score()
-        confidence = self._calculate_confidence()
         heatmap = self._generate_hourly_heatmap()
-        recommendation = self._generate_smart_recommendation(peak_hour, procrastination, context_insights, fatigue, distraction)
+        task_type_analysis = self._analyze_task_types()
+        profile = self._build_productivity_profile(peak_hour, context_insights, fatigue, distraction, heatmap, task_type_analysis)
+        adaptive_recs = self._generate_adaptive_recommendations(profile, context_insights, fatigue, distraction)
+
+        # Top-level backward-compatible recommendation derived from primary adaptive recommendation
+        primary_rec = adaptive_recs[0]
+        top_recommendation = f"{primary_rec['advice']} {primary_rec['reason']}"
 
         return {
             "peakHour": peak_hour,
             "procrastinationTrigger": procrastination,
             "bestContext": best_context_str,
-            "recommendation": recommendation,
+            "recommendation": top_recommendation,
             "productivityScore": score,
             "confidenceLevel": confidence,
             "hourlyHeatmap": heatmap,
@@ -59,8 +88,26 @@ class InsightEngine:
             "fatigueScore": fatigue["score"],
             "explanation": fatigue["explanation"],
             "contextInsights": context_insights,
-            "distractionSensitivity": distraction
+            "distractionSensitivity": distraction,
+            "productivityProfile": profile,
+            "adaptiveRecommendations": adaptive_recs
         }
+
+    def _calculate_confidence(self) -> str:
+        total = len(self.tasks)
+        if total < 5:
+            return "Calibrating"
+        elif total < 20:
+            return "Medium"
+        return "High"
+
+    def _calculate_profile_confidence(self) -> str:
+        total = len(self.tasks)
+        if total < 5:
+            return "LOW"
+        elif total <= 15:
+            return "MEDIUM"
+        return "HIGH"
 
     def _detect_peak_hour(self) -> str:
         hourly_completions = defaultdict(int)
@@ -137,12 +184,10 @@ class InsightEngine:
     def _format_best_context(self, context_insights: List[Dict[str, Any]]) -> str:
         if not context_insights:
             return "Home Office (Consistent completion)"
-        # Prefer context with at least 2 tasks
         best = next((c for c in context_insights if c["totalTasks"] >= 2), context_insights[0])
         return f"{best['context']} ({best['completionRate']}% completion across {best['totalTasks']} sessions)"
 
     def _detect_fatigue(self) -> Dict[str, Any]:
-        # 1. Screen-On Duration Strain (0-30 pts)
         screen_pts = 0
         max_screen_sec = 0
         if self.context_signals:
@@ -155,7 +200,6 @@ class InsightEngine:
             elif max_screen_sec >= 2700:
                 screen_pts = 10
         else:
-            # Infer from task continuous load
             avg_task_dur = sum(t.get("duration", 0) for t in self.tasks) / len(self.tasks) if self.tasks else 0
             if avg_task_dur >= 3600:
                 screen_pts = 20
@@ -164,7 +208,6 @@ class InsightEngine:
             elif avg_task_dur >= 1200:
                 screen_pts = 5
 
-        # 2. Declining Completion Rate: Morning vs Afternoon (0-30 pts)
         morning_tasks = [t for t in self.tasks if datetime.fromtimestamp(t["createdAt"] / 1000).hour < 13]
         afternoon_tasks = [t for t in self.tasks if datetime.fromtimestamp(t["createdAt"] / 1000).hour >= 13]
 
@@ -185,7 +228,6 @@ class InsightEngine:
             elif drop >= 0.10:
                 completion_drop_pts = 10
 
-        # 3. Session Duration Degradation (0-20 pts)
         duration_shrink_pts = 0
         m_dur = 0.0
         a_dur = 0.0
@@ -197,7 +239,6 @@ class InsightEngine:
             elif m_dur > 0 and (a_dur / m_dur) <= 0.75:
                 duration_shrink_pts = 10
 
-        # 4. Context/Task Switching & Distraction Intrusion (0-20 pts)
         switching_pts = 0
         non_prod_signals = 0
         if self.context_signals:
@@ -208,7 +249,6 @@ class InsightEngine:
             elif non_prod_ratio >= 0.15:
                 switching_pts = 10
         else:
-            # Check rapid task switching between different types (<45 mins)
             sorted_tasks = sorted(self.tasks, key=lambda t: t.get("createdAt", 0))
             switches = 0
             for i in range(1, len(sorted_tasks)):
@@ -228,7 +268,6 @@ class InsightEngine:
         else:
             level = "LOW"
 
-        # Construct Explainable Summary
         explanations = []
         if drop >= 0.20:
             explanations.append(f"completion rate drops by {int(drop * 100)}% in the afternoon ({int(m_rate * 100)}% morning vs {int(a_rate * 100)}% afternoon)")
@@ -275,7 +314,6 @@ class InsightEngine:
             if cat in ["Social", "Entertainment", "Communication"]:
                 trigger_categories.add(cat)
 
-        # Distraction score calculation
         total_tasks = len(self.tasks)
         failed_tasks = sum(1 for t in self.tasks if not t.get("completedAt"))
         fail_ratio = (failed_tasks / total_tasks) if total_tasks > 0 else 0.0
@@ -309,58 +347,242 @@ class InsightEngine:
             "summary": summary
         }
 
-    def _generate_smart_recommendation(
+    def _analyze_task_types(self) -> List[Dict[str, Any]]:
+        tasks_by_type = defaultdict(list)
+        for task in self.tasks:
+            t_type = task.get("type", "other")
+            tasks_by_type[t_type].append(task)
+
+        analysis_list = []
+        for t_type, type_tasks in tasks_by_type.items():
+            total = len(type_tasks)
+            completed = sum(1 for t in type_tasks if t.get("completedAt"))
+            failed = total - completed
+            completion_rate = round((completed / total) * 100, 1) if total > 0 else 0.0
+            abandonment_rate = round((failed / total) * 100, 1) if total > 0 else 0.0
+            avg_dur = round(sum(t.get("duration", 0) for t in type_tasks) / total, 1) if total > 0 else 0.0
+            prod_score = int(round(completion_rate * 0.7 + min(1.0, avg_dur / 3600.0) * 30))
+            prod_score = max(0, min(100, prod_score))
+
+            # Detect strongest time window for this specific task type
+            strongest_window = "Insufficient data"
+            if total >= 2:
+                hourly_success = defaultdict(lambda: {"attempts": 0, "completed": 0})
+                for t in type_tasks:
+                    h = datetime.fromtimestamp(t["createdAt"] / 1000).hour
+                    hourly_success[h]["attempts"] += 1
+                    if t.get("completedAt"):
+                        hourly_success[h]["completed"] += 1
+
+                best_hour = None
+                best_hour_rate = -1.0
+                for h in range(24):
+                    # Check 2-hour sliding window (h, h+1)
+                    attempts_in_window = hourly_success[h]["attempts"] + hourly_success[(h + 1) % 24]["attempts"]
+                    comp_in_window = hourly_success[h]["completed"] + hourly_success[(h + 1) % 24]["completed"]
+                    if attempts_in_window > 0 and comp_in_window > 0:
+                        rate = comp_in_window / attempts_in_window
+                        if rate > best_hour_rate or (rate == best_hour_rate and attempts_in_window > hourly_success[best_hour]["attempts"]):
+                            best_hour_rate = rate
+                            best_hour = h
+
+                if best_hour is not None:
+                    strongest_window = f"{best_hour:02d}:00 - {(best_hour + 2) % 24:02d}:00"
+
+            analysis_list.append({
+                "taskType": t_type,
+                "strongestWindow": strongest_window,
+                "completionRate": completion_rate,
+                "abandonmentRate": abandonmentment_rate if 'abandonmentment_rate' in locals() else abandonment_rate,
+                "avgDuration": avg_dur,
+                "productivityScore": prod_score,
+                "totalSessions": total
+            })
+
+        analysis_list.sort(key=lambda x: (x["completionRate"], x["totalSessions"]), reverse=True)
+        return analysis_list
+
+    def _detect_weakest_focus_window(self) -> str:
+        hourly_stats = defaultdict(lambda: {"attempts": 0, "failed": 0})
+        for task in self.tasks:
+            h = datetime.fromtimestamp(task["createdAt"] / 1000).hour
+            hourly_stats[h]["attempts"] += 1
+            if not task.get("completedAt"):
+                hourly_stats[h]["failed"] += 1
+
+        worst_hour = None
+        highest_fail_rate = 0.0
+
+        for h in range(24):
+            attempts_in_window = hourly_stats[h]["attempts"] + hourly_stats[(h + 1) % 24]["attempts"]
+            failed_in_window = hourly_stats[h]["failed"] + hourly_stats[(h + 1) % 24]["failed"]
+            if attempts_in_window >= 2:
+                rate = failed_in_window / attempts_in_window
+                if rate > highest_fail_rate:
+                    highest_fail_rate = rate
+                    worst_hour = h
+
+        if worst_hour is not None and highest_fail_rate >= 0.30:
+            return f"{worst_hour:02d}:00 - {(worst_hour + 2) % 24:02d}:00"
+        return "None detected"
+
+    def _build_productivity_profile(
         self,
         peak_hour: str,
-        procrastination: str,
+        context_insights: List[Dict[str, Any]],
+        fatigue: Dict[str, Any],
+        distraction: Dict[str, Any],
+        heatmap: Dict[str, int],
+        task_type_analysis: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        total = len(self.tasks)
+        profile_conf = self._calculate_profile_confidence()
+
+        if total < 5:
+            return {
+                "bestFocusWindow": "Insufficient Data",
+                "bestTaskTypes": [],
+                "bestContext": "Track at least 5 tasks to calibrate",
+                "weakestFocusWindow": "Insufficient Data",
+                "peakProductivityScore": 0,
+                "averageCompletionRate": 0.0,
+                "fatiguePattern": "Insufficient sessions to detect fatigue onset",
+                "distractionPattern": "Insufficient sessions to detect distraction patterns",
+                "profileConfidence": "LOW",
+                "taskTypeAnalysis": task_type_analysis
+            }
+
+        # 1. Best Focus Window
+        best_window = peak_hour.split("(")[0].strip()
+
+        # 2. Best Task Types (completion rate >= 70% and >= 2 sessions)
+        best_types = [t["taskType"] for t in task_type_analysis if t["completionRate"] >= 70.0 and t["totalSessions"] >= 2]
+
+        # 3. Best Context
+        best_ctx_name = context_insights[0]["context"] if context_insights else "Home Office"
+
+        # 4. Weakest Focus Window
+        weakest_window = self._detect_weakest_focus_window()
+
+        # 5. Peak Productivity Score & Average Completion Rate
+        peak_score = max(heatmap.values(), default=0)
+        completed_count = sum(1 for t in self.tasks if t.get("completedAt"))
+        avg_completion = round((completed_count / total) * 100, 1)
+
+        # 6. Fatigue Pattern
+        if fatigue["score"] >= 65:
+            fatigue_pattern = f"Severe fatigue peaks after {weakest_window.split(' - ')[0] if weakest_window != 'None detected' else '15:00'} (score: {fatigue['score']}/100) after extended screen sessions."
+        elif fatigue["score"] >= 35:
+            fatigue_pattern = f"Moderate fatigue appears in late afternoon (score: {fatigue['score']}/100) with focus durations shrinking."
+        else:
+            fatigue_pattern = "Stable energy profile across daytime work blocks with minimal session shrinkage."
+
+        # 7. Distraction Pattern
+        if distraction["vulnerableCategories"] and distraction["triggerAppCategories"]:
+            distraction_pattern = f"High vulnerability on {', '.join(distraction['vulnerableCategories'])} when {', '.join(distraction['triggerAppCategories'])} apps are accessed."
+        elif distraction["vulnerableCategories"]:
+            distraction_pattern = f"{', '.join(distraction['vulnerableCategories']).capitalize()} tasks show elevated abandonment outside optimal environments."
+        else:
+            distraction_pattern = "Low distraction susceptibility across tracked contexts."
+
+        return {
+            "bestFocusWindow": best_window,
+            "bestTaskTypes": best_types,
+            "bestContext": best_ctx_name,
+            "weakestFocusWindow": weakest_window,
+            "peakProductivityScore": peak_score,
+            "averageCompletionRate": avg_completion,
+            "fatiguePattern": fatigue_pattern,
+            "distractionPattern": distraction_pattern,
+            "profileConfidence": profile_conf,
+            "taskTypeAnalysis": task_type_analysis
+        }
+
+    def _generate_adaptive_recommendations(
+        self,
+        profile: Dict[str, Any],
         context_insights: List[Dict[str, Any]],
         fatigue: Dict[str, Any],
         distraction: Dict[str, Any]
-    ) -> str:
-        # Identify best completed task type
-        type_rates = {}
-        for task in self.tasks:
-            t_type = task.get("type", "other")
-            if t_type not in type_rates:
-                type_rates[t_type] = {"total": 0, "completed": 0}
-            type_rates[t_type]["total"] += 1
-            if task.get("completedAt"):
-                type_rates[t_type]["completed"] += 1
+    ) -> List[Dict[str, Any]]:
+        candidates = []
 
-        priority_rank = {"coding": 0, "writing": 1, "planning": 2, "reading": 3, "meeting": 4, "exercise": 5, "other": 6}
-        best_type = "coding"
-        best_type_rate = -1
-        for t, s in type_rates.items():
-            if s["total"] >= 2:
-                r = int((s["completed"] / s["total"]) * 100)
-                if r > best_type_rate or (r == best_type_rate and priority_rank.get(t, 99) < priority_rank.get(best_type, 99)):
-                    best_type_rate = r
-                    best_type = t
+        # Rec 1: Peak Focus Alignment
+        if profile["bestFocusWindow"] != "Insufficient Data" and profile["bestTaskTypes"]:
+            primary_type = profile["bestTaskTypes"][0]
+            type_stat = next((t for t in profile["taskTypeAnalysis"] if t["taskType"] == primary_type), None)
+            rate_str = f"{int(type_stat['completionRate'])}%" if type_stat else "peak"
+            candidates.append({
+                "weight": 95,
+                "title": f"Protect Peak {primary_type.capitalize()} Window",
+                "advice": f"Schedule demanding {primary_type} tasks between {profile['bestFocusWindow']} in {profile['bestContext']}.",
+                "reason": f"Your {primary_type} completion rate reaches {rate_str} in {profile['bestContext']} during this window.",
+                "priority": "HIGH",
+                "impact": "HIGH"
+            })
 
-        # Identify context metrics
-        best_ctx = context_insights[0] if context_insights else {"context": "Home Office", "completionRate": 85.0}
-        worst_ctx = context_insights[-1] if len(context_insights) > 1 else None
+        # Rec 2: Fatigue & Screen Strain Mitigation
+        if fatigue["score"] >= 35:
+            weak_start = profile["weakestFocusWindow"].split(" - ")[0] if profile["weakestFocusWindow"] != "None detected" else "15:00"
+            is_high = fatigue["score"] >= 65
+            candidates.append({
+                "weight": 90 if is_high else 70,
+                "title": "Fatigue Break Pacing",
+                "advice": f"Cap afternoon focus sessions at 45 minutes and step away before {weak_start}.",
+                "reason": f"{profile['fatiguePattern']}",
+                "priority": "HIGH" if is_high else "MEDIUM",
+                "impact": "HIGH" if is_high else "MEDIUM"
+            })
 
-        parts = []
-        # 1. Peak hour and strength
-        peak_clean = peak_hour.split("(")[0].strip()
-        parts.append(f"Your {best_type} completion rate peaks between {peak_clean} ({best_type_rate}% completion in {best_ctx['context']}).")
+        # Rec 3: Context Optimization
+        if len(context_insights) >= 2:
+            best_c = context_insights[0]
+            worst_c = context_insights[-1]
+            if best_c["completionRate"] - worst_c["completionRate"] >= 25.0:
+                vulnerable_type = distraction["vulnerableCategories"][0] if distraction["vulnerableCategories"] else "complex"
+                candidates.append({
+                    "weight": 80,
+                    "title": "Shift Context for Vulnerable Tasks",
+                    "advice": f"Relocate {vulnerable_type} sessions from {worst_c['context']} to {best_c['context']}.",
+                    "reason": f"Completion rate is {best_c['completionRate']}% in {best_c['context']} versus {worst_c['completionRate']}% in {worst_c['context']}.",
+                    "priority": "MEDIUM",
+                    "impact": "HIGH" if (best_c["completionRate"] - worst_c["completionRate"]) >= 40.0 else "MEDIUM"
+                })
 
-        # 2. Context & Procrastination finding
-        if worst_ctx and worst_ctx["completionRate"] < best_ctx["completionRate"]:
-            vulnerable_str = ", ".join(distraction["vulnerableCategories"]) if distraction["vulnerableCategories"] else "complex"
-            parts.append(f"In contrast, {vulnerable_str} sessions drop to {worst_ctx['completionRate']}% completion in {worst_ctx['context']}.")
+        # Rec 4: Distraction Barrier
+        if distraction["level"] in ["HIGH", "MEDIUM"] and distraction["triggerAppCategories"]:
+            triggers = ", ".join(distraction["triggerAppCategories"])
+            candidates.append({
+                "weight": 75,
+                "title": "Silence Interrupting App Categories",
+                "advice": f"Enable Do Not Disturb to block {triggers} alerts during focus blocks.",
+                "reason": f"{profile['distractionPattern']}",
+                "priority": "MEDIUM",
+                "impact": "MEDIUM"
+            })
 
-        # 3. Fatigue & Actionable Coaching
-        if fatigue["score"] >= 65:
-            parts.append(f"High afternoon fatigue (score: {fatigue['score']}/100) significantly degrades focus after extended screen sessions.")
-            parts.append(f"Consider scheduling difficult {vulnerable_str if worst_ctx else best_type} tasks before 11:00 AM in {best_ctx['context']}, and limit continuous screen blocks to 45 minutes.")
-        elif fatigue["score"] >= 35:
-            parts.append(f"Moderate fatigue (score: {fatigue['score']}/100) sets in during late afternoon. Schedule high-priority deep work in {best_ctx['context']} during your morning peak.")
-        else:
-            parts.append(f"Maintain your consistent cadence by protecting your {peak_clean} block for high-priority initiatives.")
+        if not candidates:
+            candidates.append({
+                "weight": 50,
+                "title": "Maintain Rhythm",
+                "advice": f"Continue consistent task tracking in your {profile['bestFocusWindow']} focus block.",
+                "reason": "Current session distribution shows stable pacing and low distraction interference.",
+                "priority": "LOW",
+                "impact": "LOW"
+            })
 
-        return " ".join(parts)
+        candidates.sort(key=lambda x: x["weight"], reverse=True)
+        # Return top 1-3 recommendations, dropping internal sort weight
+        top_recs = []
+        for c in candidates[:3]:
+            top_recs.append({
+                "title": c["title"],
+                "advice": c["advice"],
+                "reason": c["reason"],
+                "priority": c["priority"],
+                "impact": c["impact"]
+            })
+        return top_recs
 
     def _calculate_productivity_score(self) -> int:
         total = len(self.tasks)
@@ -368,14 +590,6 @@ class InsightEngine:
             return 0
         completed = sum(1 for t in self.tasks if t.get("completedAt"))
         return max(0, min(100, int((completed / total) * 100)))
-
-    def _calculate_confidence(self) -> str:
-        total = len(self.tasks)
-        if total < 5:
-            return "Calibrating"
-        elif total < 20:
-            return "Medium"
-        return "High"
 
     def _generate_hourly_heatmap(self) -> Dict[str, int]:
         heatmap = {}
@@ -398,12 +612,17 @@ class InsightEngine:
 if __name__ == "__main__":
     import json, os
     sample_file = os.path.join(os.path.dirname(__file__), "sample_data.json")
+    signals_file = os.path.join(os.path.dirname(__file__), "sample_context_signals.json")
+
+    tasks = []
+    signals = []
     if os.path.exists(sample_file):
         with open(sample_file) as f:
             tasks = json.load(f)
-    else:
-        from synthetic_generator import generate_synthetic_tasks
-        tasks = generate_synthetic_tasks(days=5)
+    if os.path.exists(signals_file):
+        with open(signals_file) as f:
+            signals = json.load(f)
 
-    engine = InsightEngine(tasks)
-    print(json.dumps(engine.analyze(), indent=2))
+    engine = InsightEngine(tasks, signals)
+    res = engine.analyze()
+    print(json.dumps(res, indent=2))
