@@ -1,6 +1,5 @@
 package com.iqoo.productivity.engine
 
-import com.iqoo.productivity.model.Priority
 import com.iqoo.productivity.model.Task
 import com.iqoo.productivity.model.TaskType
 import java.util.Calendar
@@ -10,7 +9,9 @@ data class InsightResult(
     val procrastinationTrigger: String,
     val bestContext: String,
     val recommendation: String,
-    val productivityScore: Int = 85
+    val productivityScore: Int = 85,
+    val confidenceLevel: String = "High",
+    val hourlyHeatmap: Map<Int, Int> = emptyMap()
 )
 
 /**
@@ -27,7 +28,9 @@ class InsightEngine(private val tasks: List<Task>) {
                 procrastinationTrigger = "No activity patterns detected yet",
                 bestContext = "Track at least 5 tasks to calibrate",
                 recommendation = "Start tracking daily focus blocks to activate personalized insights.",
-                productivityScore = 0
+                productivityScore = 0,
+                confidenceLevel = "Calibrating",
+                hourlyHeatmap = (0..23).associateWith { 0 }
             )
         }
 
@@ -36,13 +39,17 @@ class InsightEngine(private val tasks: List<Task>) {
         val bestContext = detectBestContext()
         val recommendation = generateRecommendation(procrastinationTrigger)
         val score = calculateProductivityScore()
+        val confidence = calculateConfidence()
+        val heatmap = generateHourlyHeatmap()
 
         return InsightResult(
             peakHour = peakHour,
             procrastinationTrigger = procrastinationTrigger,
             bestContext = bestContext,
             recommendation = recommendation,
-            productivityScore = score
+            productivityScore = score,
+            confidenceLevel = confidence,
+            hourlyHeatmap = heatmap
         )
     }
 
@@ -139,5 +146,35 @@ class InsightEngine(private val tasks: List<Task>) {
         if (total == 0) return 0
         val completed = tasks.count { it.completedAt != null }
         return ((completed.toDouble() / total) * 100).toInt().coerceIn(0, 100)
+    }
+
+    private fun calculateConfidence(): String {
+        val count = tasks.size
+        return when {
+            count < 5 -> "Calibrating"
+            count < 20 -> "Medium"
+            else -> "High"
+        }
+    }
+
+    private fun generateHourlyHeatmap(): Map<Int, Int> {
+        val calendar = Calendar.getInstance()
+        val attempts = mutableMapOf<Int, Int>()
+        val completed = mutableMapOf<Int, Int>()
+
+        for (task in tasks) {
+            calendar.timeInMillis = task.createdAt
+            val hour = calendar.get(Calendar.HOUR_OF_DAY)
+            attempts[hour] = (attempts[hour] ?: 0) + 1
+            if (task.completedAt != null) {
+                completed[hour] = (completed[hour] ?: 0) + 1
+            }
+        }
+
+        return (0..23).associateWith { hour ->
+            val att = attempts[hour] ?: 0
+            val comp = completed[hour] ?: 0
+            if (att == 0) 0 else ((comp.toDouble() / att) * 100).toInt()
+        }
     }
 }

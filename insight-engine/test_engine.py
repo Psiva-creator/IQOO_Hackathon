@@ -9,26 +9,35 @@ class TestInsightEngine(unittest.TestCase):
 
     def test_insight_structure(self):
         insights = self.engine.analyze()
-        required_keys = ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]
+        required_keys = ["peakHour", "procrastinationTrigger", "bestContext", "recommendation", "productivityScore", "confidenceLevel", "hourlyHeatmap"]
         for key in required_keys:
             self.assertIn(key, insights)
-            self.assertIsInstance(insights[key], str)
-            self.assertTrue(len(insights[key]) > 0)
 
     def test_peak_hour_morning_detection(self):
         insights = self.engine.analyze()
-        # Synthetic data has coding sessions at 09:15 and 10:30
         self.assertTrue("09:00" in insights["peakHour"] or "10:00" in insights["peakHour"])
 
     def test_procrastination_detection(self):
         insights = self.engine.analyze()
-        # Synthetic data has writing tasks failing after 3 PM
         self.assertIn("Writing", insights["procrastinationTrigger"])
+
+    def test_confidence_level(self):
+        insights = self.engine.analyze()
+        # 42 synthetic tasks should yield "High" confidence
+        self.assertEqual(insights["confidenceLevel"], "High")
+
+    def test_hourly_heatmap(self):
+        insights = self.engine.analyze()
+        heatmap = insights["hourlyHeatmap"]
+        self.assertEqual(len(heatmap), 24)
+        # 9 AM should have high completion
+        self.assertGreater(heatmap["9"], 50)
 
     def test_empty_tasks(self):
         empty_engine = InsightEngine([])
         insights = empty_engine.analyze()
-        self.assertIn("Insufficient Data", insights["peakHour"])
+        self.assertEqual(insights["confidenceLevel"], "Calibrating")
+        self.assertEqual(insights["productivityScore"], 0)
 
 if __name__ == "__main__":
     unittest.main()

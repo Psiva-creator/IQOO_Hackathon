@@ -19,6 +19,23 @@
     "recommendation": {
       "type": "string",
       "description": "Actionable coaching advice for the user"
+    },
+    "productivityScore": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Overall habit health index (0-100)"
+    },
+    "confidenceLevel": {
+      "type": "string",
+      "enum": ["Calibrating", "Medium", "High"]
+    },
+    "hourlyHeatmap": {
+      "type": "object",
+      "description": "Productivity focus scores (0-100) indexed by hour of day (0-23)",
+      "additionalProperties": {
+        "type": "integer"
+      }
     }
   },
   "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]
