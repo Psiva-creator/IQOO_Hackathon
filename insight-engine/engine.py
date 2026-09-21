@@ -49,16 +49,21 @@ def _sanitize_text(val: str, max_length: int = 120) -> str:
 
 def _sanitize_task_type(val: str) -> str:
     """
-    Normalize raw task titles/notes strictly to allowed privacy-safe categories.
+    Normalize raw task titles/notes strictly to privacy-safe categories.
     Raw task titles like 'Review PR #42 with Alice at https://github.com' are mapped
     to allowed categories ('coding') or 'general' so personal names/notes never leak.
+    Clean single-word task category identifiers (e.g. 'robotics', 'coding') are preserved.
     """
     if not val:
         return "general"
     clean = re.sub(r"[^a-zA-Z0-9\s_-]", " ", str(val)).lower()
     for allowed in ALLOWED_TASK_TYPES:
-        if re.search(r"\b" + re.escape(allowed) + r"\b", clean) or allowed in clean:
+        if re.search(r"\b" + re.escape(allowed) + r"\b", clean):
             return allowed
+    raw_stripped = str(val).strip().lower()
+    if re.fullmatch(r"[a-z0-9_-]{1,24}", raw_stripped) and not any(ch.isdigit() for ch in raw_stripped[:3]):
+        if not re.search(r"https?://|www\.|\@|[-+]?\d{1,3}\.\d+", raw_stripped):
+            return raw_stripped
     return "general"
 
 def _sanitize_context(val: str) -> str:
@@ -757,6 +762,11 @@ class InsightEngine:
         task type historical performance, time-of-day alignment, context match,
         fatigue level, screen strain, and distraction vulnerability.
         """
+        # Privacy sanitization of inputs
+        task_type = _sanitize_task_type(task_type)
+        if current_context is not None:
+            current_context = _sanitize_context(current_context)
+
         # Resolve defaults
         if current_hour is None:
             if self.context_signals:
@@ -768,11 +778,12 @@ class InsightEngine:
 
         if current_context is None:
             if self.context_signals:
-                current_context = self.context_signals[-1].get("location") or "Home Office"
+                current_context = _sanitize_context(self.context_signals[-1].get("location") or "Home Office")
             elif self.tasks:
-                current_context = self.tasks[-1].get("location") or "Home Office"
+                current_context = _sanitize_context(self.tasks[-1].get("location") or "Home Office")
             else:
                 current_context = "Home Office"
+
 
         if recent_screen_duration is None:
             if self.context_signals:
@@ -1301,44 +1312,24 @@ class InsightEngine:
         # 9. Final Intervention Message (Default Fallback)
         intervention = None if is_suppressed else fallback_message
 
-        # 10. Clean, Privacy-Sanitized Structured Evidence for Local AI Model
+        # 10. Canonical Minimal Structured Evidence Contract for Local AI Model
         structured_evidence = {
             "currentTask": task_type,
-            "taskType": task_type,
             "productivityScore": score,
-            "score": score,
             "fatigue": fatigue_score,
-            "fatigueScore": fatigue_score,
             "fatigueLevel": fatigue.get("level", "LOW"),
             "distraction": distraction.get("score", 0),
-            "distractionScore": distraction.get("score", 0),
             "contextSwitches": num_switches,
-            "recentContextSwitches": num_switches,
             "context": context_loc,
             "peakWindow": best_window,
-            "bestFocusWindow": best_window,
             "isInPeakWindow": (flag_window == "PEAK"),
             "prediction": score,
-            "predictedScore": score,
             "riskLevel": "HIGH" if score < 45 else ("MEDIUM" if score < 70 else "LOW"),
             "confidence": confidence,
             "detectedTrigger": trigger,
-            "trigger": trigger,
-            "state": state,
-            "urgency": urgency,
-            "currentHour": current_hour,
-            "screenDurationSeconds": screen_duration,
-            "screenDurationMinutes": screen_duration_min,
-            "nonProductiveAppCount": non_prod_count,
-            "bestContext": best_context,
-            "recommendationContext": {
-                "bestFocusWindow": best_window,
-                "bestContext": best_context,
-                "weakestFocusWindow": weakest_window,
-                "isCurrentlyInPeak": (flag_window == "PEAK")
-            },
             "facts": [_sanitize_text(f) for f in evidence]
         }
+
 
         local_model_prompt = (
             f"System: You are an on-device personal productivity coach. Generate a 1-sentence supportive coaching intervention.\n"
@@ -1511,8 +1502,25 @@ def update_user_model(
     outcome (completion or abandonment) with exponential recency weighting and
     prediction calibration tracking.
     """
+    # 0. Privacy sanitization of incoming task and context
+    sanitized_task = dict(new_task)
+    if "type" in sanitized_task:
+        sanitized_task["type"] = _sanitize_task_type(sanitized_task["type"])
+    if "title" in sanitized_task:
+        sanitized_task["title"] = _sanitize_text(sanitized_task["title"])
+    if "location" in sanitized_task:
+        sanitized_task["location"] = _sanitize_context(sanitized_task["location"])
+    new_task = sanitized_task
+
+    if context and isinstance(context, dict):
+        sanitized_context = dict(context)
+        if "location" in sanitized_context:
+            sanitized_context["location"] = _sanitize_context(sanitized_context["location"])
+        context = sanitized_context
+
     # 1. Extract previous state
     if previous_model is None or not isinstance(previous_model, dict):
+
         prev_tasks = []
         prev_signals = []
         prev_calib = {

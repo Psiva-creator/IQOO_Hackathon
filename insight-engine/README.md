@@ -371,7 +371,7 @@ Run test suite:
 ```bash
 python3 -m unittest test_engine.py -v
 ```
-**45 comprehensive unit tests** cover:
+**48 comprehensive unit tests** cover:
 1. Backward compatibility for legacy contracts
 2. Peak morning hour detection
 3. Procrastination trigger detection
@@ -408,16 +408,15 @@ python3 -m unittest test_engine.py -v
 34. Coach evaluation: cooldown window enforcement
 35. Coach evaluation: confidence threshold gating
 36. Coach evaluation: Kotlin/Python contract and schema parity
-37. **Privacy Sanitizer: standalone redaction of URLs, emails, GPS, UUIDs, phone numbers**
-38. **Privacy Sanitizer: task type whitelist filtering**
-39. **Privacy Sanitizer: context location normalization**
-40. **End-to-End Privacy Sanitization: scrubbing raw task titles and context leaks**
-41. **SLM Integration: complete structured evidence reception and schema compliance**
-42. **Anti-Spam Bypass: 100% bypass of SLM inference when intervention is suppressed**
-43. **SLM Failure Recovery: deterministic fallback on error or exception**
-44. **Asynchronous Non-Blocking Execution: background worker thread verification**
-45. **Module-level `evaluate_and_coach` and `evaluate_and_coach_async` aliases**
-
-
-
-
+37. Privacy Sanitizer: standalone redaction of URLs, emails, GPS, UUIDs, phone numbers
+38. Privacy Sanitizer: task type whitelist and category sanitization
+39. Privacy Sanitizer: context location normalization
+40. End-to-End Privacy Sanitization: scrubbing raw task titles and context leaks
+41. Ingress Privacy Sanitization: `predict_task_readiness` cleans dirty task inputs and locations
+42. Ingress Privacy Sanitization: `update_user_model` purges URLs, PII, and GPS from updates
+43. AI Evidence Canonical Contract: 14-field minimal schema matching `contracts/ai_model.schema.json`
+44. Local AI Boundary Independence: decoupled execution across fallback, live SLM, and mock providers
+45. Anti-Spam Bypass: 100% bypass of SLM inference when intervention is suppressed
+46. SLM Failure Recovery: deterministic fallback on error or exception
+47. Asynchronous Non-Blocking Execution: background worker thread verification
+48. Module-level `evaluate_and_coach` and `evaluate_and_coach_async` aliases

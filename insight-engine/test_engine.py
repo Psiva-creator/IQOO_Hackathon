@@ -879,9 +879,9 @@ class TestLocalSLMIntegration(unittest.TestCase):
         # Model should be called because screen duration is high (AT_RISK)
         self.assertEqual(mock_model.calls, 1)
 
-        # Verify taskType is safely mapped to allowed whitelist
+        # Verify taskType is safely mapped to allowed whitelist and redundant duplicate keys removed
         self.assertEqual(ev["structuredEvidence"]["currentTask"], "coding")
-        self.assertEqual(ev["structuredEvidence"]["taskType"], "coding")
+        self.assertNotIn("taskType", ev["structuredEvidence"])
         self.assertNotIn("https://", ev["structuredEvidence"]["currentTask"])
         self.assertNotIn("Alice", ev["structuredEvidence"]["currentTask"])
 
@@ -913,7 +913,7 @@ class TestLocalSLMIntegration(unittest.TestCase):
         self.assertEqual(mock_model.calls, 1)
         evidence = ev["structuredEvidence"]
 
-        # Check required fields for SLM consumption
+        # Check the 14 canonical required fields for SLM consumption (matching AIModelInput contract)
         self.assertEqual(evidence["currentTask"], "coding")
         self.assertIsInstance(evidence["productivityScore"], int)
         self.assertIsInstance(evidence["fatigue"], int)
@@ -921,7 +921,7 @@ class TestLocalSLMIntegration(unittest.TestCase):
         self.assertIsInstance(evidence["distraction"], int)
         self.assertEqual(evidence["contextSwitches"], 7)
         self.assertEqual(evidence["context"], "Home Office")
-        self.assertIn("bestFocusWindow", evidence)
+        self.assertIn("peakWindow", evidence)
         self.assertIn("isInPeakWindow", evidence)
         self.assertIn("prediction", evidence)
         self.assertIn(evidence["riskLevel"], ["LOW", "MEDIUM", "HIGH"])
@@ -929,9 +929,18 @@ class TestLocalSLMIntegration(unittest.TestCase):
         self.assertIsNotNone(evidence["detectedTrigger"])
         self.assertIsInstance(evidence["facts"], list)
         self.assertGreater(len(evidence["facts"]), 0)
-        self.assertIn("recommendationContext", evidence)
 
-        # Verify AIModelInput parses this structured evidence seamlessly
+        # Verify redundant duplicate fields were cleanly removed
+        self.assertNotIn("taskType", evidence)
+        self.assertNotIn("score", evidence)
+        self.assertNotIn("fatigueScore", evidence)
+        self.assertNotIn("distractionScore", evidence)
+        self.assertNotIn("recentContextSwitches", evidence)
+        self.assertNotIn("bestFocusWindow", evidence)
+        self.assertNotIn("predictedScore", evidence)
+        self.assertNotIn("trigger", evidence)
+
+        # Verify AIModelInput parses this canonical structured evidence seamlessly
         ai_input = AIModelInput.from_evidence(evidence)
         self.assertEqual(ai_input.currentTask, "coding")
         self.assertEqual(ai_input.contextSwitches, 7)
@@ -941,6 +950,7 @@ class TestLocalSLMIntegration(unittest.TestCase):
         self.assertEqual(ev["intervention"], "Local SLM: Take a break from coding.")
         self.assertEqual(ev["modelProvider"], "mock-slm-v1")
         self.assertEqual(ev["coachResponse"]["message"], "Local SLM: Take a break from coding.")
+
 
     def test_anti_spam_suppression_bypasses_slm_inference(self):
         mock_model = MockLocalAIModel()
@@ -1059,9 +1069,87 @@ class TestLocalSLMIntegration(unittest.TestCase):
         self.assertEqual(res["intervention"], "Module-level SLM coach.")
         self.assertEqual(res["modelProvider"], "mock-slm-v1")
 
+    def test_privacy_ingress_predict_task_readiness(self):
+        from engine import predict_task_readiness
+        pred = predict_task_readiness(
+            tasks=self.tasks,
+            context_signals=self.signals,
+            task_type="Secret client work with Dave (coding) at https://zoom.us",
+            current_hour=10,
+            current_context="37.7749,-122.4194 (Top Secret Lab)"
+        )
+        # Verify taskType is normalized
+        self.assertEqual(pred["taskType"], "coding")
+        self.assertNotIn("https://", pred["reason"])
+        self.assertNotIn("Dave", pred["reason"])
+        self.assertNotIn("37.7749", pred["reason"])
+
+    def test_privacy_ingress_update_user_model(self):
+        from engine import update_user_model
+        dirty_task = {
+            "id": "dirty-1",
+            "title": "Private meeting with Alice at https://corp.internal/spec",
+            "type": "Meeting at 37.7749,-122.4194 with bob@company.com",
+            "createdAt": int(time.time() * 1000) - 3600000,
+            "completedAt": int(time.time() * 1000),
+            "duration": 3600,
+            "location": "37.7749, -122.4194"
+        }
+        dirty_context = {
+            "timestamp": int(time.time() * 1000),
+            "appCategory": "Productivity",
+            "location": "https://maps.google.com/?q=37.7749,-122.4194"
+        }
+        user_model = update_user_model(None, dirty_task, dirty_context)
+        stored_task = user_model["tasks"][-1]
+        self.assertEqual(stored_task["type"], "meeting")
+        self.assertNotIn("https://", stored_task["title"])
+        self.assertIn("[URL_REDACTED]", stored_task["title"])
+        self.assertEqual(stored_task["location"], "Home Office")
+
+    def test_local_ai_boundary_provider_independence(self):
+        from ai_model.fallback import FallbackAIModel
+        # 1. Deterministic Fallback provider
+        fallback_model = FallbackAIModel()
+        ev_fallback = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            model=fallback_model
+        )
+        self.assertFalse(ev_fallback["isInterventionSuppressed"])
+        self.assertIsNotNone(ev_fallback["intervention"])
+        self.assertIn("fallback", ev_fallback["modelProvider"].lower())
+
+        # 2. Mock SLM provider
+        mock_model = MockLocalAIModel(simulated_message="Mock provider coaching.")
+        ev_mock = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            model=mock_model
+        )
+        self.assertEqual(mock_model.calls, 1)
+        self.assertEqual(ev_mock["intervention"], "Mock provider coaching.")
+        self.assertEqual(ev_mock["modelProvider"], "mock-slm-v1")
+
+        # 3. None (built-in offline fallback)
+        ev_none = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            model=None
+        )
+        self.assertFalse(ev_none["isInterventionSuppressed"])
+        self.assertEqual(ev_none["intervention"], ev_none["fallbackMessage"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

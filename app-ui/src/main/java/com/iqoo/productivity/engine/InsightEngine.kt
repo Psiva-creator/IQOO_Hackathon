@@ -48,6 +48,11 @@ object PrivacySanitizer {
         for (allowed in ALLOWED_TASKS) {
             if (clean.contains(allowed)) return allowed
         }
+        if (clean.matches(Regex("^[a-z0-9_-]{1,24}$")) && !clean.take(3).any { it.isDigit() }) {
+            if (!URL_REGEX.containsMatchIn(clean) && !EMAIL_REGEX.containsMatchIn(clean) && !GPS_REGEX.containsMatchIn(clean)) {
+                return clean
+            }
+        }
         return "general"
     }
 
@@ -950,6 +955,8 @@ class InsightEngine(
         currentContext: String? = null,
         recentScreenDuration: Long? = null
     ): TaskPrediction {
+        val cleanTaskType = PrivacySanitizer.sanitizeTaskType(taskType)
+
         val resolvedHour = currentHour ?: if (contextSignals.isNotEmpty()) {
             val cal = Calendar.getInstance()
             cal.timeInMillis = contextSignals.last().timestamp
@@ -962,13 +969,14 @@ class InsightEngine(
             Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         }
 
-        val resolvedContext = currentContext ?: if (contextSignals.isNotEmpty()) {
+        val rawContext = currentContext ?: if (contextSignals.isNotEmpty()) {
             contextSignals.last().location
         } else if (tasks.isNotEmpty()) {
             tasks.last().location ?: "Home Office"
         } else {
             "Home Office"
         }
+        val resolvedContext = PrivacySanitizer.sanitizeContext(rawContext)
 
         val resolvedScreenDuration = recentScreenDuration ?: if (contextSignals.isNotEmpty()) {
             contextSignals.last().screenOnDuration
@@ -977,7 +985,8 @@ class InsightEngine(
         }
 
         val totalTasks = tasks.size
-        val typeTasks = tasks.filter { it.type.name.equals(taskType, ignoreCase = true) }
+        val typeTasks = tasks.filter { it.type.name.equals(cleanTaskType, ignoreCase = true) }
+
         val totalTypeTasks = typeTasks.size
 
         if (totalTasks == 0) {
@@ -1512,44 +1521,24 @@ class InsightEngine(
         // 9. Final Intervention Message (Default Fallback)
         var finalIntervention: String? = if (isSuppressed) null else fallbackMessage
 
-        // 10. Clean, Privacy-Sanitized Structured Evidence for Local AI Model
+        // 10. Canonical Minimal Structured Evidence Contract for Local AI Model
         val structuredEvidence = mapOf<String, Any>(
             "currentTask" to cleanTaskType,
-            "taskType" to cleanTaskType,
             "productivityScore" to score,
-            "score" to score,
             "fatigue" to fatigueScore,
-            "fatigueScore" to fatigueScore,
             "fatigueLevel" to fatigue.first,
             "distraction" to distraction.score,
-            "distractionScore" to distraction.score,
             "contextSwitches" to numSwitches,
-            "recentContextSwitches" to numSwitches,
             "context" to resolvedContext,
             "peakWindow" to bestWindow,
-            "bestFocusWindow" to bestWindow,
             "isInPeakWindow" to (flagWindow == "PEAK"),
             "prediction" to score,
-            "predictedScore" to score,
             "riskLevel" to if (score < 45) "HIGH" else if (score < 70) "MEDIUM" else "LOW",
             "confidence" to confidence,
-            "detectedTrigger" to trigger,
-            "trigger" to trigger,
-            "state" to state,
-            "urgency" to urgency,
-            "currentHour" to resolvedHour,
-            "screenDurationSeconds" to screenDuration,
-            "screenDurationMinutes" to screenDurationMin,
-            "nonProductiveAppCount" to nonProdCount,
-            "bestContext" to bestContext,
-            "recommendationContext" to mapOf(
-                "bestFocusWindow" to bestWindow,
-                "bestContext" to bestContext,
-                "weakestFocusWindow" to weakestWindow,
-                "isCurrentlyInPeak" to (flagWindow == "PEAK")
-            ),
+            "detectedTrigger" to (trigger ?: "None"),
             "facts" to sanitizedEvidence
         )
+
 
         val localModelPrompt = "System: You are an on-device personal productivity coach. Generate a 1-sentence supportive coaching intervention.\n" +
             "Context: State=$state, Score=$score/100, Trigger=$trigger, Urgency=$urgency, Confidence=$confidence.\n" +
@@ -1767,6 +1756,15 @@ fun updateUserModel(
     context: ContextSignal? = null,
     predictedScore: Int? = null
 ): UserModel {
+    // 0. Privacy sanitization
+    val cleanTask = newTask.copy(
+        title = PrivacySanitizer.sanitizeText(newTask.title),
+        location = PrivacySanitizer.sanitizeContext(newTask.location)
+    )
+    val cleanContext = context?.copy(
+        location = PrivacySanitizer.sanitizeContext(context.location)
+    )
+
     val prevTasks = previousModel?.tasks ?: emptyList()
     val prevSignals = previousModel?.contextSignals ?: emptyList()
     val prevCalib = previousModel?.predictionCalibration ?: PredictionCalibration()
@@ -1777,17 +1775,17 @@ fun updateUserModel(
     } else if (prevTasks.isNotEmpty()) {
         val prevEngine = InsightEngine(prevTasks, prevSignals)
         val cal = Calendar.getInstance()
-        cal.timeInMillis = newTask.createdAt
+        cal.timeInMillis = cleanTask.createdAt
         val tHour = cal.get(Calendar.HOUR_OF_DAY)
-        val tLoc = newTask.location.ifBlank { context?.location ?: "Home Office" }
-        val tScreen = context?.screenOnDuration ?: 0L
-        val predRes = prevEngine.predictTaskReadiness(newTask.type.name.lowercase(), tHour, tLoc, tScreen)
+        val tLoc = cleanTask.location.ifBlank { cleanContext?.location ?: "Home Office" }
+        val tScreen = cleanContext?.screenOnDuration ?: 0L
+        val predRes = prevEngine.predictTaskReadiness(cleanTask.type.name.lowercase(), tHour, tLoc, tScreen)
         predRes.predictedScore
     } else {
         null
     }
 
-    val isCompleted = newTask.completedAt != null
+    val isCompleted = cleanTask.completedAt != null
     val actualScore = if (isCompleted) 100 else 0
     val actualOutcomeStr = if (isCompleted) "COMPLETED" else "ABANDONED"
 
@@ -1819,8 +1817,8 @@ fun updateUserModel(
     }
 
     // 3. Update task list and context signals
-    val updatedTasks = prevTasks + listOf(newTask)
-    val updatedSignals = if (context != null) prevSignals + listOf(context) else prevSignals
+    val updatedTasks = prevTasks + listOf(cleanTask)
+    val updatedSignals = if (cleanContext != null) prevSignals + listOf(cleanContext) else prevSignals
 
     // 4. Recompute profile with recency weighting
     val engine = InsightEngine(updatedTasks, updatedSignals, newCalib)
@@ -1837,3 +1835,4 @@ fun updateUserModel(
         lastUpdated = System.currentTimeMillis()
     )
 }
+
