@@ -69,6 +69,7 @@ fun ProductivityApp() {
     var startedAt by rememberSaveable { mutableStateOf(0L) }
     var statusMessage by rememberSaveable { mutableStateOf("") }
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var showInsights by rememberSaveable { mutableStateOf(false) }
 
     val taskTypes = listOf(
         "coding", "writing", "meeting", "reading",
@@ -101,6 +102,21 @@ fun ProductivityApp() {
                 }
 
                 TaskHistory(tasks)
+            }
+        } else if (showInsights) {
+            Column(
+                modifier = Modifier.padding(paddingValues)
+            ) {
+                Button(
+                    onClick = { showInsights = false },
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth()
+                ) {
+                    Text("Back to Start Task")
+                }
+
+                InsightsScreen()
             }
         } else {
             Column(
@@ -211,6 +227,12 @@ fun ProductivityApp() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("View Task History")
+                }
+                Button(
+                    onClick = { showInsights = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("View Insights")
                 }
             }
         }
