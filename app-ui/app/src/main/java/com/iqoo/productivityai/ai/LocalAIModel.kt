@@ -1,16 +1,22 @@
-package com.iqoo.productivity.ai
+package com.iqoo.productivityai.ai
+
+import android.content.Context
+import java.io.File
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
- * Local AI Model Integration Layer for Android.
- * Pure Kotlin, zero external dependencies, 100% on-device & offline execution.
+ * Local AI Model Integration Layer for Android / iQOO devices.
  *
- * Sits between the Insight Engine (Structured Evidence) and UI/Notification Layer
- * to produce natural-language, explainable coaching.
+ * Implements Google MediaPipe GenAI (LiteRT) on-device LLM inference for Gemma-2B / TinyLlama
+ * with strict privacy filtering and automatic 4-tier fallback to FallbackAIModel.
  */
 
 /**
- * Sanitized, privacy-preserving structured evidence passed from the Insight Engine
- * to the Local AI Model. Raw personal notes, task titles, and coordinates are stripped.
+ * Sanitized, privacy-preserving structured evidence passed from Insight Engine.
+ * Never includes raw task titles, free-text notes, GPS coordinates, URLs, or personal names.
  */
 data class AIModelInput(
     val currentTask: String = "general",
@@ -39,9 +45,6 @@ data class AIModelInput(
             "Transit", "Home", "Remote", "Focus Room"
         )
 
-        /**
-         * Parses arbitrary telemetry maps into a sanitized, safe AIModelInput.
-         */
         @Suppress("UNCHECKED_CAST")
         fun fromEvidence(evidence: Map<String, Any?>): AIModelInput {
             val nested = evidence["structuredEvidence"] as? Map<String, Any?> ?: evidence
@@ -107,8 +110,7 @@ data class AIModelInput(
 }
 
 /**
- * Structured natural-language coaching output produced by a Local AI Model or deterministic fallback.
- * Complies strictly with contracts/ai_model.schema.json.
+ * Structured coaching output conforming strictly to contracts/ai_model.schema.json.
  */
 data class AIModelResponse(
     val message: String,
@@ -131,29 +133,20 @@ data class AIModelResponse(
 }
 
 /**
- * Replaceable Local AI Model Interface.
- * Can be implemented by FallbackAIModel (current) or future on-device SLMs (Gemma, TinyLlama).
+ * Local AI Model Provider interface.
  */
 interface LocalAIModel {
     val modelName: String
     val isFallback: Boolean
     val isReady: Boolean get() = true
 
-    /**
-     * Generate natural-language coaching from structured evidence.
-     */
     fun generateCoaching(input: AIModelInput): AIModelResponse
-
-    /**
-     * Overloaded convenience method accepting arbitrary telemetry maps.
-     */
     fun generateCoaching(evidence: Map<String, Any?>): AIModelResponse =
         generateCoaching(AIModelInput.fromEvidence(evidence))
 }
 
 /**
  * Deterministic offline fallback coach.
- * Guaranteed 100% offline, zero-dependency, reproducible execution.
  */
 class FallbackAIModel : LocalAIModel {
     override val modelName: String = "deterministic-fallback-v1"
@@ -271,7 +264,7 @@ class FallbackAIModel : LocalAIModel {
 }
 
 /**
- * Prompt & Response Formatter for on-device Small Language Models (Gemma 2B, TinyLlama 1.1B).
+ * Token-efficient prompt and response formatter for small language models.
  */
 object PromptFormatter {
     const val SYSTEM_INSTRUCTION =
@@ -283,7 +276,7 @@ object PromptFormatter {
         "3. Output strictly valid JSON with keys: 'message', 'reason', 'action', 'confidence' (LOW, MEDIUM, HIGH).\n" +
         "4. No conversational filler or markdown formatting outside the JSON."
 
-    fun formatPrompt(evidence: AIModelInput, template: String = "standard"): String {
+    fun formatPrompt(evidence: AIModelInput, template: String = "gemma"): String {
         val factsStr = if (evidence.facts.isNotEmpty()) evidence.facts.take(3).joinToString("; ") else "No anomalous flags"
         val evidenceBlock = """
             Telemetry Evidence:
@@ -300,40 +293,224 @@ object PromptFormatter {
         """.trimIndent()
 
         return when (template) {
-            "gemma" -> "<start_of_turn>user\n$SYSTEM_INSTRUCTION\n\n$evidenceBlock\nRespond with JSON:\n<start_of_turn>model\n"
-            "tinyllama" -> "<|system|>\n$SYSTEM_INSTRUCTION</s>\n<|user|>\n$evidenceBlock</s>\n<|assistant|>\n"
-            else -> "=== SYSTEM ===\n$SYSTEM_INSTRUCTION\n\n=== EVIDENCE ===\n$evidenceBlock\n\n=== COACH OUTPUT (JSON) ===\n"
+            "gemma" -> "<start_of_turn>user\n$SYSTEM_INSTRUCTION\n\n$evidenceBlock\nRespond with JSON:\n<start_of_turn>model\n{\"message\": \""
+            "tinyllama" -> "<|system|>\n$SYSTEM_INSTRUCTION</s>\n<|user|>\n$evidenceBlock</s>\n<|assistant|>\n{\"message\": \""
+            else -> "=== SYSTEM ===\n$SYSTEM_INSTRUCTION\n\n=== EVIDENCE ===\n$evidenceBlock\n\n=== COACH OUTPUT (JSON) ===\n{\"message\": \""
         }
     }
 }
 
 /**
- * Concrete on-device Small Language Model (SLM) provider for Android / iQOO devices.
- * Supports Google MediaPipe GenAI (LiteRT) running Gemma-2B, SmolLM, or TinyLlama.
- *
- * Implements 4-tier automatic fallback to FallbackAIModel:
- * 1. Model weights missing / uninstalled
- * 2. Device free memory < minFreeRamMb
- * 3. Inference timeout (> timeoutMs)
- * 4. Engine error or malformed JSON output
+ * Configuration options for the on-device SLM runtime.
+ * Allows Member A to configure model location, memory thresholds, execution timeouts,
+ * and prompt formatting without touching model internals.
  */
-open class MediaPipeSLMModel(
-    override val modelName: String = "mediapipe-gemma-2b-local",
-    modelPath: String? = null,
+data class ModelConfig(
+    val modelPath: String? = null,
     val minFreeRamMb: Long = 400L,
     val timeoutMs: Long = 10000L,
-    template: String = "gemma"
-) : BaseOnDeviceSLM(modelName, modelPath, template) {
+    val maxTokens: Int = 128,
+    val template: String = "gemma",
+    val candidatePaths: List<String> = emptyList()
+) {
+    companion object {
+        val DEFAULT = ModelConfig()
 
-    override val isReady: Boolean
-        get() = modelPath != null && java.io.File(modelPath).exists()
+        /**
+         * Resolves the most appropriate existing model path using context and standard search order:
+         * 1. Explicitly configured path (if provided and exists)
+         * 2. Additional candidate paths provided by caller
+         * 3. App internal storage: context.filesDir/models/
+         * 4. App external storage: context.getExternalFilesDir(null)/models/
+         * 5. Staging paths (for ADB testing on physical device): /data/local/tmp/
+         */
+        fun resolveModelPath(
+            context: Context?,
+            preferredPath: String? = null,
+            candidatePaths: List<String> = emptyList()
+        ): String? {
+            if (!preferredPath.isNullOrBlank()) {
+                val f = File(preferredPath)
+                if (f.exists() && f.canRead()) return f.absolutePath
+            }
 
-    /**
-     * Check device available memory via Linux /proc/meminfo or Android runtime.
-     */
-    protected open fun getAvailableMemoryMb(): Long {
+            for (cand in candidatePaths) {
+                if (cand.isNotBlank()) {
+                    val f = File(cand)
+                    if (f.exists() && f.canRead()) return f.absolutePath
+                }
+            }
+
+            val searchTargets = mutableListOf<File>()
+
+            // 1. App internal files directory
+            context?.filesDir?.let { dir ->
+                searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.bin"))
+                searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.task"))
+                searchTargets.add(File(dir, "models/tinyllama-1.1b-chat-cpu-int4.bin"))
+                searchTargets.add(File(dir, "gemma-2b-it-cpu-int4.bin"))
+                searchTargets.add(File(dir, "gemma-2b-it-cpu-int4.task"))
+            }
+
+            // 2. App external files directory
+            try {
+                context?.getExternalFilesDir(null)?.let { dir ->
+                    searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.bin"))
+                    searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.task"))
+                    searchTargets.add(File(dir, "models/tinyllama-1.1b-chat-cpu-int4.bin"))
+                    searchTargets.add(File(dir, "gemma-2b-it-cpu-int4.bin"))
+                }
+            } catch (_: Exception) {}
+
+            // 3. Staging directories (for ADB testing on physical device)
+            searchTargets.add(File("/data/local/tmp/gemma-2b-it-cpu-int4.bin"))
+            searchTargets.add(File("/data/local/tmp/gemma-2b-it-cpu-int4.task"))
+            searchTargets.add(File("/data/local/tmp/tinyllama-1.1b-chat-cpu-int4.bin"))
+
+            for (target in searchTargets) {
+                if (target.exists() && target.canRead()) {
+                    return target.absolutePath
+                }
+            }
+
+            // Return preferredPath if provided, or default fallback path
+            return preferredPath ?: (searchTargets.firstOrNull()?.absolutePath)
+        }
+    }
+}
+
+/**
+ * Base adapter for on-device Small Language Models.
+ */
+abstract class BaseOnDeviceSLM(
+    override val modelName: String,
+    val modelPath: String? = null,
+    val template: String = "gemma"
+) : LocalAIModel, AutoCloseable {
+    override val isFallback: Boolean = false
+    override val isReady: Boolean get() = modelPath != null && File(modelPath).exists()
+
+    abstract fun executeInference(prompt: String): String
+
+    override fun close() {
+        // Default no-op, overridden by subclasses with native resources
+    }
+
+    protected fun parseSlmJson(raw: String, input: AIModelInput, latency: Double): AIModelResponse {
+        val fallback = FallbackAIModel()
         return try {
-            val file = java.io.File("/proc/meminfo")
+            var cleaned = raw.trim()
+            if (cleaned.startsWith("```json")) {
+                cleaned = cleaned.removePrefix("```json")
+                val endIdx = cleaned.lastIndexOf("```")
+                if (endIdx != -1) cleaned = cleaned.substring(0, endIdx)
+                cleaned = cleaned.trim()
+            } else if (cleaned.startsWith("```")) {
+                cleaned = cleaned.removePrefix("```")
+                val endIdx = cleaned.lastIndexOf("```")
+                if (endIdx != -1) cleaned = cleaned.substring(0, endIdx)
+                cleaned = cleaned.trim()
+            }
+
+            val jsonStr = if (cleaned.startsWith("{")) cleaned else "{\"message\": \"$cleaned"
+            val msg = extractJsonValue(jsonStr, "message") ?: throw IllegalArgumentException("Missing message")
+            val reason = extractJsonValue(jsonStr, "reason") ?: "On-device model generated coaching advice."
+            val action = extractJsonValue(jsonStr, "action") ?: throw IllegalArgumentException("Missing action")
+            val conf = extractJsonValue(jsonStr, "confidence") ?: "HIGH"
+
+            AIModelResponse(
+                message = msg,
+                reason = reason,
+                action = action,
+                confidence = conf.uppercase(),
+                provider = modelName,
+                isFallback = false,
+                latencyMs = latency
+            )
+        } catch (e: Exception) {
+            val fallbackResp = fallback.generateCoaching(input)
+            fallbackResp.copy(provider = "$modelName (fallback: malformed SLM output)")
+        }
+    }
+
+    private fun extractJsonValue(json: String, key: String): String? {
+        val pattern = Regex("\"$key\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+        val match = pattern.find(json)?.groupValues?.getOrNull(1) ?: return null
+        return match
+            .replace("\\\"", "\"")
+            .replace("\\n", " ")
+            .replace("\\t", " ")
+            .trim()
+    }
+}
+
+/**
+ * Concrete Android on-device model runner using Google MediaPipe GenAI (LiteRT).
+ * Loads and runs INT4 quantized models (gemma-2b-it-cpu-int4.bin or .task) on the physical iQOO phone.
+ * Supports configurable model paths, memory thresholds, execution timeouts, and dynamic native linking.
+ */
+open class MediaPipeSLMModel(
+    private val context: Context? = null,
+    override val modelName: String = "mediapipe-gemma-2b-local",
+    modelPath: String? = null,
+    val config: ModelConfig = ModelConfig.DEFAULT
+) : BaseOnDeviceSLM(
+    modelName = modelName,
+    modelPath = ModelConfig.resolveModelPath(context, modelPath ?: config.modelPath, config.candidatePaths),
+    template = config.template
+) {
+    private var nativeEngineInstance: Any? = null
+    private val fallback = FallbackAIModel()
+
+    init {
+        initializeNativeEngineIfAvailable()
+    }
+
+    private fun initializeNativeEngineIfAvailable() {
+        if (!isReady || context == null) return
+
+        try {
+            // Dynamically load Google MediaPipe GenAI Tasks if present on Android classpath:
+            // com.google.mediapipe.tasks.genai.llminference.LlmInference
+            val llmClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInference")
+            val optionsBuilderClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInference\$LlmInferenceOptions")
+            val builderMethod = optionsBuilderClass.getMethod("builder")
+            val builder = builderMethod.invoke(null)
+
+            builder.javaClass.getMethod("setModelPath", String::class.java).invoke(builder, modelPath)
+            builder.javaClass.getMethod("setMaxTokens", Int::class.javaPrimitiveType).invoke(builder, config.maxTokens)
+            val options = builder.javaClass.getMethod("build").invoke(builder)
+
+            val createMethod = llmClass.getMethod("createFromOptions", Context::class.java, options.javaClass)
+            nativeEngineInstance = createMethod.invoke(null, context, options)
+        } catch (e: ClassNotFoundException) {
+            nativeEngineInstance = null // Running outside MediaPipe AAR packaging
+        } catch (e: Exception) {
+            nativeEngineInstance = null
+        }
+    }
+
+    protected open fun getAvailableMemoryMb(): Long {
+        // Query Android ActivityManager when running on device with Context
+        if (context != null) {
+            try {
+                val actManagerClass = Class.forName("android.app.ActivityManager")
+                val memInfoClass = Class.forName("android.app.ActivityManager\$MemoryInfo")
+                val memInfo = memInfoClass.getConstructor().newInstance()
+                val actManager = context.getSystemService(Context.ACTIVITY_SERVICE)
+                if (actManager != null) {
+                    val getMemInfoMethod = actManagerClass.getMethod("getMemoryInfo", memInfoClass)
+                    getMemInfoMethod.invoke(actManager, memInfo)
+                    val availMemField = memInfoClass.getField("availMem")
+                    val availBytes = availMemField.getLong(memInfo)
+                    return availBytes / (1024L * 1024L)
+                }
+            } catch (_: Exception) {}
+        }
+
+        // Fallback to /proc/meminfo or Java runtime memory
+        return try {
+            val file = File("/proc/meminfo")
             if (file.exists()) {
                 val line = file.bufferedReader().useLines { lines ->
                     lines.firstOrNull { it.startsWith("MemAvailable:") }
@@ -350,84 +527,104 @@ open class MediaPipeSLMModel(
                 (rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())) / (1024L * 1024L)
             }
         } catch (e: Exception) {
-            1024L // Safe default
+            1024L
         }
     }
 
     override fun executeInference(prompt: String): String {
-        // MediaPipe LlmInference / LiteRT invocation hook
-        // In full Android APK build with com.google.mediapipe:tasks-genai:
-        // val llm = LlmInference.createFromOptions(context, options)
-        // return llm.generateResponse(prompt)
-        throw UnsupportedOperationException("MediaPipe native runtime invoked outside Android APK container")
+        val engine = nativeEngineInstance
+            ?: throw IllegalStateException("MediaPipe GenAI native runtime is not loaded on this host.")
+
+        // Support direct generateResponse(prompt) and session-based LlmInferenceSession
+        return try {
+            val generateMethod = engine.javaClass.getMethod("generateResponse", String::class.java)
+            generateMethod.invoke(engine, prompt) as String
+        } catch (e: NoSuchMethodException) {
+            val sessionClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession")
+            val sessionOptionsClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession\$LlmInferenceSessionOptions")
+            val sessionBuilder = sessionOptionsClass.getMethod("builder").invoke(null)
+            val sessionOptions = sessionBuilder.javaClass.getMethod("build").invoke(sessionBuilder)
+            val session = sessionClass.getMethod("createFromOptions", engine.javaClass, sessionOptionsClass)
+                .invoke(null, engine, sessionOptions)
+            val sessionGenerate = session.javaClass.getMethod("generateResponse", String::class.java)
+            sessionGenerate.invoke(session, prompt) as String
+        }
     }
 
     override fun generateCoaching(input: AIModelInput): AIModelResponse {
-        val fallback = FallbackAIModel()
-
-        // 1. Check if model weights exist locally on device
+        // 1. Check if model weights exist on device
         if (!isReady) {
             val resp = fallback.generateCoaching(input)
-            return resp.copy(provider = "$modelName (fallback: weights not installed)")
+            return resp.copy(provider = "$modelName (fallback: weights not installed at ${modelPath ?: "unspecified"})")
         }
 
-        // 2. Check if available RAM satisfies threshold to prevent OOM
+        // 2. Check memory sufficiency
         val freeMem = getAvailableMemoryMb()
-        if (freeMem < minFreeRamMb) {
+        if (freeMem < config.minFreeRamMb) {
             val resp = fallback.generateCoaching(input)
-            return resp.copy(provider = "$modelName (fallback: low RAM ${freeMem}MB < ${minFreeRamMb}MB)")
+            return resp.copy(provider = "$modelName (fallback: low RAM ${freeMem}MB < ${config.minFreeRamMb}MB)")
         }
 
-        // 3. Attempt local inference with timeout protection
+        // 3. Check native engine availability
+        if (nativeEngineInstance == null) {
+            val resp = fallback.generateCoaching(input)
+            return resp.copy(provider = "$modelName (fallback: native MediaPipe AAR unlinked)")
+        }
+
+        // 4. Attempt inference with timeout
         val prompt = PromptFormatter.formatPrompt(input, template)
         val startTime = System.currentTimeMillis()
 
         return try {
-            val rawOutput = executeWithTimeout(timeoutMs) {
-                executeInference(prompt)
-            }
+            val executor = Executors.newSingleThreadExecutor()
+            val future = executor.submit(Callable { executeInference(prompt) })
+            val rawOutput = future.get(config.timeoutMs, TimeUnit.MILLISECONDS)
             val elapsed = (System.currentTimeMillis() - startTime).toDouble()
             parseSlmJson(rawOutput, input, elapsed)
-        } catch (e: java.util.concurrent.TimeoutException) {
+        } catch (e: TimeoutException) {
             val resp = fallback.generateCoaching(input)
-            resp.copy(provider = "$modelName (fallback: inference timeout > ${timeoutMs}ms)")
+            resp.copy(provider = "$modelName (fallback: inference timeout > ${config.timeoutMs}ms)")
         } catch (e: Exception) {
             val resp = fallback.generateCoaching(input)
             resp.copy(provider = "$modelName (fallback: ${e.message?.take(40) ?: "inference error"})")
         }
     }
 
-    private fun executeWithTimeout(timeout: Long, block: () -> String): String {
-        val future = java.util.concurrent.Executors.newSingleThreadExecutor().submit(java.util.concurrent.Callable {
-            block()
-        })
-        return future.get(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
+    override fun close() {
+        nativeEngineInstance?.let { engine ->
+            try {
+                val closeMethod = engine.javaClass.getMethod("close")
+                closeMethod.invoke(engine)
+            } catch (_: Exception) {}
+            nativeEngineInstance = null
+        }
     }
 }
 
 /**
- * Factory for creating LocalAIModel instances in Android activities, workers, or viewmodels.
+ * Factory for instantiating the LocalAIModel on Android.
  */
 object LocalAIModelFactory {
     fun getModel(
+        context: Context? = null,
         provider: String = "fallback",
         modelPath: String? = null,
-        minFreeRamMb: Long = 400L
+        config: ModelConfig = ModelConfig.DEFAULT
     ): LocalAIModel {
         if (provider.equals("mediapipe", ignoreCase = true) ||
             provider.equals("gemma", ignoreCase = true) ||
-            provider.equals("localslm", ignoreCase = true) ||
-            provider.equals("ondevice", ignoreCase = true)
+            provider.equals("ondevice", ignoreCase = true) ||
+            provider.equals("slm", ignoreCase = true)
         ) {
-            if (modelPath != null && java.io.File(modelPath).exists()) {
-                return MediaPipeSLMModel(
-                    modelName = if (provider.contains("gemma")) "mediapipe-gemma-2b" else "mediapipe-slm-local",
-                    modelPath = modelPath,
-                    minFreeRamMb = minFreeRamMb
-                )
-            }
+            val resolved = ModelConfig.resolveModelPath(context, modelPath ?: config.modelPath, config.candidatePaths)
+            val resolvedConfig = if (modelPath != null) config.copy(modelPath = resolved) else config
+            return MediaPipeSLMModel(
+                context = context,
+                modelName = "mediapipe-gemma-2b-local",
+                modelPath = resolved,
+                config = resolvedConfig
+            )
         }
-        // Default safe fallback coach
         return FallbackAIModel()
     }
 }

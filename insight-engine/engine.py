@@ -4,10 +4,84 @@ Context-Aware Productivity, Fatigue, Personal Productivity Profile & Adaptive Re
 Pure statistical and heuristic analytics running 100% on-device.
 """
 
+import os
+import re
+import sys
 import time
 from collections import defaultdict
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
+
+# Whitelist of allowed sanitized task types to ensure no raw personal notes leak
+ALLOWED_TASK_TYPES = {
+    "coding", "writing", "meeting", "reading", "planning",
+    "exercise", "design", "research", "admin", "general"
+}
+
+# Whitelist of sanitized context locations
+STANDARD_CONTEXTS = {
+    "home office", "office", "cafe", "library", "meeting room",
+    "transit", "home", "remote", "focus room"
+}
+
+def _sanitize_text(val: str, max_length: int = 120) -> str:
+    """
+    Strip potential PII, URLs, GPS coordinates, UUIDs, MAC addresses, phone numbers,
+    and long numeric IDs from string values.
+    """
+    if not val:
+        return ""
+    # Strip URLs
+    cleaned = re.sub(r"https?://\S+|www\.\S+", "[URL_REDACTED]", str(val))
+    # Strip email addresses
+    cleaned = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]", cleaned)
+    # Strip GPS coordinates (e.g. 37.7749, -122.4194)
+    cleaned = re.sub(r"[-+]?\d{1,3}\.\d+,\s*[-+]?\d{1,3}\.\d+", "[GPS_REDACTED]", cleaned)
+    # Strip UUIDs / device IDs
+    cleaned = re.sub(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "[DEVICE_ID_REDACTED]", cleaned)
+    # Strip MAC addresses
+    cleaned = re.sub(r"\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\b", "[DEVICE_ID_REDACTED]", cleaned)
+    # Strip phone numbers
+    cleaned = re.sub(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "[PHONE_REDACTED]", cleaned)
+    # Strip large digit sequences (>= 7 digits)
+    cleaned = re.sub(r"\b\d{7,}\b", "[ID_REDACTED]", cleaned)
+    return cleaned.strip()[:max_length]
+
+def _sanitize_task_type(val: str) -> str:
+    """
+    Normalize raw task titles/notes strictly to privacy-safe categories.
+    Raw task titles like 'Review PR #42 with Alice at https://github.com' are mapped
+    to allowed categories ('coding') or 'general' so personal names/notes never leak.
+    Clean single-word task category identifiers (e.g. 'robotics', 'coding') are preserved.
+    """
+    if not val:
+        return "general"
+    clean = re.sub(r"[^a-zA-Z0-9\s_-]", " ", str(val)).lower()
+    for allowed in ALLOWED_TASK_TYPES:
+        if re.search(r"\b" + re.escape(allowed) + r"\b", clean):
+            return allowed
+    raw_stripped = str(val).strip().lower()
+    if re.fullmatch(r"[a-z0-9_-]{1,24}", raw_stripped) and not any(ch.isdigit() for ch in raw_stripped[:3]):
+        if not re.search(r"https?://|www\.|\@|[-+]?\d{1,3}\.\d+", raw_stripped):
+            return raw_stripped
+    return "general"
+
+def _sanitize_context(val: str) -> str:
+    """
+    Normalize context location strictly to privacy-safe labels.
+    GPS coordinates, URLs, or device IDs are purged and defaulted to 'Home Office'.
+    """
+    if not val:
+        return "Home Office"
+    clean = str(val).strip()
+    if clean.lower() in STANDARD_CONTEXTS:
+        return clean.title()
+    # Check for GPS coordinates or URL leaks
+    if re.search(r"[-+]?\d{1,3}\.\d+", clean) or re.search(r"https?://|www\.", clean):
+        return "Home Office"
+    sanitized = _sanitize_text(clean, max_length=30)
+    return sanitized.title() if sanitized else "Home Office"
+
 
 class InsightEngine:
     def __init__(
@@ -688,6 +762,11 @@ class InsightEngine:
         task type historical performance, time-of-day alignment, context match,
         fatigue level, screen strain, and distraction vulnerability.
         """
+        # Privacy sanitization of inputs
+        task_type = _sanitize_task_type(task_type)
+        if current_context is not None:
+            current_context = _sanitize_context(current_context)
+
         # Resolve defaults
         if current_hour is None:
             if self.context_signals:
@@ -699,11 +778,12 @@ class InsightEngine:
 
         if current_context is None:
             if self.context_signals:
-                current_context = self.context_signals[-1].get("location") or "Home Office"
+                current_context = _sanitize_context(self.context_signals[-1].get("location") or "Home Office")
             elif self.tasks:
-                current_context = self.tasks[-1].get("location") or "Home Office"
+                current_context = _sanitize_context(self.tasks[-1].get("location") or "Home Office")
             else:
                 current_context = "Home Office"
+
 
         if recent_screen_duration is None:
             if self.context_signals:
@@ -941,30 +1021,34 @@ class InsightEngine:
         last_intervention_time: Optional[int] = None,
         last_trigger: Optional[str] = None,
         current_time: Optional[int] = None,
-        cooldown_seconds: int = 900
+        cooldown_seconds: int = 900,
+        model: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Real-Time AI Coach Evaluation.
         Evaluates current user state (OPTIMAL, NORMAL, AT_RISK, RECOVERY), identifies
-        friction triggers, compiles structured evidence for local AI models, generates
-        offline-ready coaching interventions, and applies anti-spam throttling.
+        friction triggers, compiles privacy-sanitized structured evidence for local AI models,
+        generates offline-ready coaching interventions, and applies anti-spam throttling.
         """
         if current_time is None:
             current_time = int(time.time() * 1000)
 
+        # 0. Privacy Sanitization of Inputs
+        task_type = _sanitize_task_type(task_type)
+
         # 1. Resolve Context
         if isinstance(context, dict):
-            context_loc = context.get("location") or "Home Office"
+            context_loc = _sanitize_context(context.get("location") or "Home Office")
             if screen_duration == 0:
                 screen_duration = int(context.get("screenOnDuration", 0))
         elif isinstance(context, str):
-            context_loc = context
+            context_loc = _sanitize_context(context)
         elif self.context_signals:
-            context_loc = self.context_signals[-1].get("location") or "Home Office"
+            context_loc = _sanitize_context(self.context_signals[-1].get("location") or "Home Office")
             if screen_duration == 0:
                 screen_duration = int(self.context_signals[-1].get("screenOnDuration", 0))
         elif self.tasks:
-            context_loc = self.tasks[-1].get("location") or "Home Office"
+            context_loc = _sanitize_context(self.tasks[-1].get("location") or "Home Office")
         else:
             context_loc = "Home Office"
 
@@ -1167,6 +1251,9 @@ class InsightEngine:
             else:
                 trigger = "SEVERE_COGNITIVE_BURNOUT"
 
+        # Sanitize all evidence strings
+        evidence = [_sanitize_text(e) for e in evidence]
+
         # 7. Deterministic Fallback Coaching Message
         if state == "RECOVERY":
             if trigger == "EXCESSIVE_SCREEN_TIME":
@@ -1222,34 +1309,81 @@ class InsightEngine:
                     is_suppressed = True
                     suppression_reason = "DUPLICATE_TRIGGER"
 
-        # 9. Final Intervention Message
+        # 9. Final Intervention Message (Default Fallback)
         intervention = None if is_suppressed else fallback_message
 
-        # 10. Structured Evidence for Local AI Model
+        # 10. Canonical Minimal Structured Evidence Contract for Local AI Model
         structured_evidence = {
-            "taskType": task_type,
-            "currentHour": current_hour,
-            "context": context_loc,
-            "screenDurationSeconds": screen_duration,
-            "screenDurationMinutes": screen_duration_min,
-            "recentContextSwitches": num_switches,
-            "nonProductiveAppCount": non_prod_count,
-            "fatigueScore": fatigue_score,
+            "currentTask": task_type,
+            "productivityScore": score,
+            "fatigue": fatigue_score,
             "fatigueLevel": fatigue.get("level", "LOW"),
+            "distraction": distraction.get("score", 0),
+            "contextSwitches": num_switches,
+            "context": context_loc,
+            "peakWindow": best_window,
             "isInPeakWindow": (flag_window == "PEAK"),
-            "bestFocusWindow": best_window,
-            "bestContext": best_context,
-            "facts": list(evidence)
+            "prediction": score,
+            "riskLevel": "HIGH" if score < 45 else ("MEDIUM" if score < 70 else "LOW"),
+            "confidence": confidence,
+            "detectedTrigger": trigger,
+            "facts": [_sanitize_text(f) for f in evidence]
         }
+
 
         local_model_prompt = (
             f"System: You are an on-device personal productivity coach. Generate a 1-sentence supportive coaching intervention.\n"
-            f"Context: State={state}, Score={score}/100, Trigger={trigger}, Urgency={urgency}.\n"
-            f"Evidence: {'; '.join(evidence[:3])}.\n"
+            f"Context: State={state}, Score={score}/100, Trigger={trigger}, Urgency={urgency}, Confidence={confidence}.\n"
+            f"Evidence: {'; '.join(structured_evidence['facts'][:3])}.\n"
             f"Coach:"
         )
 
-        return {
+        # 11. Local AI Model Integration (Deterministic Fallback or Local SLM)
+        coach_response = None
+        model_provider = None
+
+        if model is not None:
+            if is_suppressed:
+                # Anti-spam throttling bypass: skip model inference to preserve device battery and CPU/NPU cycles
+                model_provider = f"{getattr(model, 'model_name', 'local-slm')} (bypassed: intervention suppressed)"
+            else:
+                try:
+                    # Model accepts either AIModelInput or structured evidence dict
+                    if hasattr(model, "generate_coaching"):
+                        resp = model.generate_coaching(structured_evidence)
+                    elif hasattr(model, "generateCoaching"):
+                        resp = model.generateCoaching(structured_evidence)
+                    elif callable(model):
+                        resp = model(structured_evidence)
+                    else:
+                        resp = None
+
+                    if resp is not None:
+                        # Extract coaching message from AIModelResponse or dict
+                        if hasattr(resp, "message") and resp.message:
+                            msg = str(resp.message).strip()
+                        elif isinstance(resp, dict) and resp.get("message"):
+                            msg = str(resp.get("message")).strip()
+                        elif isinstance(resp, str) and resp.strip():
+                            msg = resp.strip()
+                        else:
+                            msg = ""
+
+                        if msg:
+                            intervention = msg
+                            coach_response = resp.to_dict() if hasattr(resp, "to_dict") else (resp if isinstance(resp, dict) else {"message": msg})
+                            model_provider = getattr(resp, "provider", getattr(model, "model_name", "local-slm"))
+                        else:
+                            # Fallback if empty message
+                            intervention = fallback_message
+                            model_provider = f"{getattr(model, 'model_name', 'local-slm')} (empty output fallback)"
+                except Exception as e:
+                    # Graceful deterministic fallback on model error/timeout
+                    intervention = fallback_message
+                    coach_response = {"error": str(e), "isFallback": True}
+                    model_provider = f"{getattr(model, 'model_name', 'local-slm')} (fallback on error: {str(e)[:50]})"
+
+        result = {
             "state": state,
             "score": score,
             "trigger": trigger,
@@ -1263,7 +1397,48 @@ class InsightEngine:
             "localModelPrompt": local_model_prompt,
             "fallbackMessage": fallback_message
         }
+        if model is not None:
+            result["coachResponse"] = coach_response
+            result["modelProvider"] = model_provider
 
+        return result
+
+    async def evaluate_and_coach_async(
+        self,
+        task_type: str = "coding",
+        current_hour: Optional[int] = None,
+        context: Optional[Union[str, Dict[str, Any]]] = None,
+        screen_duration: int = 0,
+        recent_activity: Optional[Union[List[Any], Dict[str, Any]]] = None,
+        last_intervention_time: Optional[int] = None,
+        last_trigger: Optional[str] = None,
+        current_time: Optional[int] = None,
+        cooldown_seconds: int = 900,
+        model: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Asynchronous, non-blocking evaluation with Local AI Model integration.
+        Offloads computation to a background thread so the caller's thread / event loop
+        never blocks or freezes during SLM inference.
+        """
+        import asyncio
+        return await asyncio.to_thread(
+            self.evaluate_current_state,
+            task_type=task_type,
+            current_hour=current_hour,
+            context=context,
+            screen_duration=screen_duration,
+            recent_activity=recent_activity,
+            last_intervention_time=last_intervention_time,
+            last_trigger=last_trigger,
+            current_time=current_time,
+            cooldown_seconds=cooldown_seconds,
+            model=model
+        )
+
+    evaluate_and_coach = evaluate_current_state
+    evaluateAndCoach = evaluate_current_state
+    evaluateAndCoachAsync = evaluate_and_coach_async
     evaluateCurrentState = evaluate_current_state
 
 def evaluate_current_state(
@@ -1289,6 +1464,15 @@ def evaluate_current_state(
         return engine.evaluate_current_state(*args, **kwargs)
 
 evaluateCurrentState = evaluate_current_state
+evaluate_and_coach = evaluate_current_state
+evaluateAndCoach = evaluate_current_state
+
+async def evaluate_and_coach_async(*args, **kwargs) -> Dict[str, Any]:
+    """Module-level asynchronous wrapper for evaluate_and_coach."""
+    import asyncio
+    return await asyncio.to_thread(evaluate_current_state, *args, **kwargs)
+
+evaluateAndCoachAsync = evaluate_and_coach_async
 
 def predict_task_readiness(
     tasks: List[Dict[str, Any]],
@@ -1318,8 +1502,25 @@ def update_user_model(
     outcome (completion or abandonment) with exponential recency weighting and
     prediction calibration tracking.
     """
+    # 0. Privacy sanitization of incoming task and context
+    sanitized_task = dict(new_task)
+    if "type" in sanitized_task:
+        sanitized_task["type"] = _sanitize_task_type(sanitized_task["type"])
+    if "title" in sanitized_task:
+        sanitized_task["title"] = _sanitize_text(sanitized_task["title"])
+    if "location" in sanitized_task:
+        sanitized_task["location"] = _sanitize_context(sanitized_task["location"])
+    new_task = sanitized_task
+
+    if context and isinstance(context, dict):
+        sanitized_context = dict(context)
+        if "location" in sanitized_context:
+            sanitized_context["location"] = _sanitize_context(sanitized_context["location"])
+        context = sanitized_context
+
     # 1. Extract previous state
     if previous_model is None or not isinstance(previous_model, dict):
+
         prev_tasks = []
         prev_signals = []
         prev_calib = {

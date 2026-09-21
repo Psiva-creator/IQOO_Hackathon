@@ -318,11 +318,50 @@ if (coach.intervention != null && !coach.isInterventionSuppressed) {
 
 ---
 
-## ⚖️ Limitations & Methodology
+## 🤖 Local SLM Integration & Privacy Safeguards
 
-* **Deterministic Statistical/Heuristic Engine:** All profile attributes, recommendations, predictions, calibration updates, and coach evaluations are derived via transparent mathematical heuristics (exponential decay histograms, calibration errors, ratio drops, duration variance).
-* **No Cloud AI / Zero Data Leakage:** This is **not** a cloud LLM or black-box neural network; it runs entirely within Android CPU processes with $< 20\text{ms}$ calculation latency.
-* **Sample Size Sensitivity & Cold-Start:** When `previousModel` is `null` or $< 5$ sessions exist, `profileConfidence` defaults to `LOW` and recommendations calibrate baseline readiness without making unfounded assumptions.
+The Insight Engine is prepared to integrate seamlessly with on-device Small Language Models (SLMs) such as **Gemma 2B, SmolLM, or TinyLlama** running locally via Google MediaPipe GenAI / LiteRT without freezing the Android UI.
+
+```mermaid
+flowchart TD
+    A["Real-Time Telemetry\n(Task, Context, Screen, Switches)"] --> B["Privacy Sanitizer\n(Purge PII, URLs, GPS, UUIDs, Titles)"]
+    B --> C["Insight Engine Analytics\n(Score, State, Urgency, Trigger)"]
+    C --> D{"Anti-Spam Throttling\n(Suppressed?)"}
+    D -- Yes --> E["Bypass SLM Inference\n(Save 100% CPU, NPU & Battery)"]
+    D -- No --> F["Enriched Structured Evidence\n(AIModelInput Contract)"]
+    F --> G["Local AI Model (SLM)\nNon-Blocking Worker Thread"]
+    G -- Success --> H["Natural Language Coaching\n(Actionable 1-2 sentence advice)"]
+    G -- Error / Timeout --> I["Deterministic Fallback Message\n(Safe Offline Heuristics)"]
+    E --> J["Deliver CoachEvaluation to UI"]
+    H --> J
+    I --> J
+```
+
+### 1. Privacy Sanitization Pipeline
+To strictly comply with on-device privacy requirements, raw telemetry undergoes rigorous sanitization before structured evidence or prompts are constructed:
+* **Task Whitelist:** Raw personal notes and custom titles (e.g. `"Review PR #42 with Alice at https://github.com"`) are normalized to standardized privacy-safe categories (`coding`, `writing`, `meeting`, `reading`, `planning`, `exercise`, `design`, `research`, `admin`, `general`).
+* **URL & Email Scrubbing:** All web links (`https?://\S+`) and email addresses are purged and replaced with `[URL_REDACTED]` and `[EMAIL_REDACTED]`.
+* **Location & GPS Sanitization:** Raw latitude/longitude coordinates (`37.7749, -122.4194`) and unapproved WiFi/location tags are scrubbed and defaulted to standard context names (`Home Office`, `Office`, `Cafe`, `Library`, etc.).
+* **Hardware & ID Anonymization:** Phone numbers, MAC addresses, and UUID device identifiers are sanitized with `[DEVICE_ID_REDACTED]` and `[PHONE_REDACTED]`.
+
+### 2. High-Quality Structured Evidence (`AIModelInput`)
+The engine produces clean, structured machine-readable evidence adhering to `contracts/ai_model.schema.json` and `contracts/coach_evaluation.schema.json`:
+* **Concise Observations (`facts`):** Sanitized bulleted observations regarding fatigue score, continuous screen strain, context friction, and window alignment.
+* **Operational Metrics:** Real-time focus score ($0-100$), cognitive fatigue ($0-100$), distraction sensitivity ($0-100$), recent context switch count.
+* **Behavioral Context:** Calibrated peak window, off-peak status, and alternative focus windows.
+
+### 3. Non-Blocking / Asynchronous Architecture
+SLM inference takes anywhere from $50\text{ms}$ to $800\text{ms}$ on mobile NPUs/CPUs. To guarantee the Android main thread and UI 60/120 FPS rendering never stutter:
+* **Kotlin:** `evaluateAndCoachAsync(model, ..., executor, callback)` offloads evaluation and SLM inference to a dedicated background daemon thread pool (`BackgroundExecutor`). Alternatively, coroutine callers can invoke `withContext(Dispatchers.Default) { engine.evaluateCurrentState(..., model = model) }`.
+* **Python:** `await engine.evaluate_and_coach_async(..., model=model)` offloads inference to worker threads via native `asyncio.to_thread`.
+
+### 4. Anti-Spam Inference Bypass
+When an intervention is suppressed by anti-spam policies (`SEVERITY_BELOW_THRESHOLD`, `COOLDOWN_ACTIVE`, `DUPLICATE_TRIGGER`, `LOW_CONFIDENCE`):
+* **SLM inference is 100% bypassed.**
+* No model forward passes or prompt tokenizations are initiated, saving battery, thermal headroom, and processor cycles.
+
+### 5. Graceful Fallback Guarantee
+If the SLM model weights are uninstalled, available RAM is insufficient ($< 400\text{MB}$), inference times out, or output JSON fails parsing, the engine immediately and seamlessly returns `fallbackMessage` without crashing or throwing unhandled exceptions.
 
 ---
 
@@ -332,7 +371,7 @@ Run test suite:
 ```bash
 python3 -m unittest test_engine.py -v
 ```
-**38 comprehensive unit tests** cover:
+**48 comprehensive unit tests** cover:
 1. Backward compatibility for legacy contracts
 2. Peak morning hour detection
 3. Procrastination trigger detection
@@ -360,15 +399,24 @@ python3 -m unittest test_engine.py -v
 25. Prediction calibration wrong forecast
 26. Cold start with `None` previous model
 27. Repeated sequential updates stability
-28. **Coach evaluation: normal state suppression**
-29. **Coach evaluation: optimal state sustained flow**
-30. **Coach evaluation: high fatigue and screen time intervention**
-31. **Coach evaluation: rapid context switching distraction detection**
-32. **Coach evaluation: cold start / insufficient data safety**
-33. **Coach evaluation: duplicate trigger suppression**
-34. **Coach evaluation: cooldown window enforcement**
-35. **Coach evaluation: confidence threshold gating**
-36. **Coach evaluation: Kotlin/Python contract and schema parity**
-
-
-
+28. Coach evaluation: normal state suppression
+29. Coach evaluation: optimal state sustained flow
+30. Coach evaluation: high fatigue and screen time intervention
+31. Coach evaluation: rapid context switching distraction detection
+32. Coach evaluation: cold start / insufficient data safety
+33. Coach evaluation: duplicate trigger suppression
+34. Coach evaluation: cooldown window enforcement
+35. Coach evaluation: confidence threshold gating
+36. Coach evaluation: Kotlin/Python contract and schema parity
+37. Privacy Sanitizer: standalone redaction of URLs, emails, GPS, UUIDs, phone numbers
+38. Privacy Sanitizer: task type whitelist and category sanitization
+39. Privacy Sanitizer: context location normalization
+40. End-to-End Privacy Sanitization: scrubbing raw task titles and context leaks
+41. Ingress Privacy Sanitization: `predict_task_readiness` cleans dirty task inputs and locations
+42. Ingress Privacy Sanitization: `update_user_model` purges URLs, PII, and GPS from updates
+43. AI Evidence Canonical Contract: 14-field minimal schema matching `contracts/ai_model.schema.json`
+44. Local AI Boundary Independence: decoupled execution across fallback, live SLM, and mock providers
+45. Anti-Spam Bypass: 100% bypass of SLM inference when intervention is suppressed
+46. SLM Failure Recovery: deterministic fallback on error or exception
+47. Asynchronous Non-Blocking Execution: background worker thread verification
+48. Module-level `evaluate_and_coach` and `evaluate_and_coach_async` aliases

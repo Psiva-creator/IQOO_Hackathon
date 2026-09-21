@@ -8,6 +8,7 @@ from .models import AIModelInput, AIModelResponse
 from .fallback import FallbackAIModel
 from .formatter import PromptFormatter
 from .registry import BaseOnDeviceSLM, get_local_ai_model, register_model_provider
+from .local_slm import LocalSLMModel
 
 __all__ = [
     "LocalAIModel",
@@ -16,6 +17,7 @@ __all__ = [
     "AIModelResponse",
     "PromptFormatter",
     "BaseOnDeviceSLM",
+    "LocalSLMModel",
     "get_local_ai_model",
     "register_model_provider",
     "generate_coaching",
