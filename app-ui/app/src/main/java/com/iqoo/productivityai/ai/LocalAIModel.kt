@@ -301,22 +301,118 @@ object PromptFormatter {
 }
 
 /**
+ * Configuration options for the on-device SLM runtime.
+ * Allows Member A to configure model location, memory thresholds, execution timeouts,
+ * and prompt formatting without touching model internals.
+ */
+data class ModelConfig(
+    val modelPath: String? = null,
+    val minFreeRamMb: Long = 400L,
+    val timeoutMs: Long = 10000L,
+    val maxTokens: Int = 128,
+    val template: String = "gemma",
+    val candidatePaths: List<String> = emptyList()
+) {
+    companion object {
+        val DEFAULT = ModelConfig()
+
+        /**
+         * Resolves the most appropriate existing model path using context and standard search order:
+         * 1. Explicitly configured path (if provided and exists)
+         * 2. Additional candidate paths provided by caller
+         * 3. App internal storage: context.filesDir/models/
+         * 4. App external storage: context.getExternalFilesDir(null)/models/
+         * 5. Staging paths (for ADB testing on physical device): /data/local/tmp/
+         */
+        fun resolveModelPath(
+            context: Context?,
+            preferredPath: String? = null,
+            candidatePaths: List<String> = emptyList()
+        ): String? {
+            if (!preferredPath.isNullOrBlank()) {
+                val f = File(preferredPath)
+                if (f.exists() && f.canRead()) return f.absolutePath
+            }
+
+            for (cand in candidatePaths) {
+                if (cand.isNotBlank()) {
+                    val f = File(cand)
+                    if (f.exists() && f.canRead()) return f.absolutePath
+                }
+            }
+
+            val searchTargets = mutableListOf<File>()
+
+            // 1. App internal files directory
+            context?.filesDir?.let { dir ->
+                searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.bin"))
+                searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.task"))
+                searchTargets.add(File(dir, "models/tinyllama-1.1b-chat-cpu-int4.bin"))
+                searchTargets.add(File(dir, "gemma-2b-it-cpu-int4.bin"))
+                searchTargets.add(File(dir, "gemma-2b-it-cpu-int4.task"))
+            }
+
+            // 2. App external files directory
+            try {
+                context?.getExternalFilesDir(null)?.let { dir ->
+                    searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.bin"))
+                    searchTargets.add(File(dir, "models/gemma-2b-it-cpu-int4.task"))
+                    searchTargets.add(File(dir, "models/tinyllama-1.1b-chat-cpu-int4.bin"))
+                    searchTargets.add(File(dir, "gemma-2b-it-cpu-int4.bin"))
+                }
+            } catch (_: Exception) {}
+
+            // 3. Staging directories (for ADB testing on physical device)
+            searchTargets.add(File("/data/local/tmp/gemma-2b-it-cpu-int4.bin"))
+            searchTargets.add(File("/data/local/tmp/gemma-2b-it-cpu-int4.task"))
+            searchTargets.add(File("/data/local/tmp/tinyllama-1.1b-chat-cpu-int4.bin"))
+
+            for (target in searchTargets) {
+                if (target.exists() && target.canRead()) {
+                    return target.absolutePath
+                }
+            }
+
+            // Return preferredPath if provided, or default fallback path
+            return preferredPath ?: (searchTargets.firstOrNull()?.absolutePath)
+        }
+    }
+}
+
+/**
  * Base adapter for on-device Small Language Models.
  */
 abstract class BaseOnDeviceSLM(
     override val modelName: String,
     val modelPath: String? = null,
     val template: String = "gemma"
-) : LocalAIModel {
+) : LocalAIModel, AutoCloseable {
     override val isFallback: Boolean = false
     override val isReady: Boolean get() = modelPath != null && File(modelPath).exists()
 
     abstract fun executeInference(prompt: String): String
 
+    override fun close() {
+        // Default no-op, overridden by subclasses with native resources
+    }
+
     protected fun parseSlmJson(raw: String, input: AIModelInput, latency: Double): AIModelResponse {
         val fallback = FallbackAIModel()
         return try {
-            val jsonStr = if (raw.startsWith("{\"message\": \"")) raw else "{\"message\": \"$raw"
+            var cleaned = raw.trim()
+            if (cleaned.startsWith("```json")) {
+                cleaned = cleaned.removePrefix("```json")
+                val endIdx = cleaned.lastIndexOf("```")
+                if (endIdx != -1) cleaned = cleaned.substring(0, endIdx)
+                cleaned = cleaned.trim()
+            } else if (cleaned.startsWith("```")) {
+                cleaned = cleaned.removePrefix("```")
+                val endIdx = cleaned.lastIndexOf("```")
+                if (endIdx != -1) cleaned = cleaned.substring(0, endIdx)
+                cleaned = cleaned.trim()
+            }
+
+            val jsonStr = if (cleaned.startsWith("{")) cleaned else "{\"message\": \"$cleaned"
             val msg = extractJsonValue(jsonStr, "message") ?: throw IllegalArgumentException("Missing message")
             val reason = extractJsonValue(jsonStr, "reason") ?: "On-device model generated coaching advice."
             val action = extractJsonValue(jsonStr, "action") ?: throw IllegalArgumentException("Missing action")
@@ -338,24 +434,31 @@ abstract class BaseOnDeviceSLM(
     }
 
     private fun extractJsonValue(json: String, key: String): String? {
-        val pattern = Regex("\"$key\"\\s*:\\s*\"([^\"]+)\"")
-        return pattern.find(json)?.groupValues?.getOrNull(1)
+        val pattern = Regex("\"$key\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+        val match = pattern.find(json)?.groupValues?.getOrNull(1) ?: return null
+        return match
+            .replace("\\\"", "\"")
+            .replace("\\n", " ")
+            .replace("\\t", " ")
+            .trim()
     }
 }
 
 /**
  * Concrete Android on-device model runner using Google MediaPipe GenAI (LiteRT).
- * Loads and runs INT4 quantized models (gemma-2b-it-cpu-int4.bin) on the physical iQOO phone.
+ * Loads and runs INT4 quantized models (gemma-2b-it-cpu-int4.bin or .task) on the physical iQOO phone.
+ * Supports configurable model paths, memory thresholds, execution timeouts, and dynamic native linking.
  */
 open class MediaPipeSLMModel(
     private val context: Context? = null,
     override val modelName: String = "mediapipe-gemma-2b-local",
-    modelPath: String? = "/data/local/tmp/gemma-2b-it-cpu-int4.bin",
-    val minFreeRamMb: Long = 400L,
-    val timeoutMs: Long = 10000L,
-    template: String = "gemma"
-) : BaseOnDeviceSLM(modelName, modelPath, template) {
-
+    modelPath: String? = null,
+    val config: ModelConfig = ModelConfig.DEFAULT
+) : BaseOnDeviceSLM(
+    modelName = modelName,
+    modelPath = ModelConfig.resolveModelPath(context, modelPath ?: config.modelPath, config.candidatePaths),
+    template = config.template
+) {
     private var nativeEngineInstance: Any? = null
     private val fallback = FallbackAIModel()
 
@@ -375,10 +478,10 @@ open class MediaPipeSLMModel(
             val builder = builderMethod.invoke(null)
 
             builder.javaClass.getMethod("setModelPath", String::class.java).invoke(builder, modelPath)
-            builder.javaClass.getMethod("setMaxTokens", Int::class.javaPrimitiveType).invoke(builder, 128)
+            builder.javaClass.getMethod("setMaxTokens", Int::class.javaPrimitiveType).invoke(builder, config.maxTokens)
             val options = builder.javaClass.getMethod("build").invoke(builder)
 
-            val createMethod = llmClass.getMethod("createFromOptions", Context::class.java, optionsBuilderClass)
+            val createMethod = llmClass.getMethod("createFromOptions", Context::class.java, options.javaClass)
             nativeEngineInstance = createMethod.invoke(null, context, options)
         } catch (e: ClassNotFoundException) {
             nativeEngineInstance = null // Running outside MediaPipe AAR packaging
@@ -388,6 +491,24 @@ open class MediaPipeSLMModel(
     }
 
     protected open fun getAvailableMemoryMb(): Long {
+        // Query Android ActivityManager when running on device with Context
+        if (context != null) {
+            try {
+                val actManagerClass = Class.forName("android.app.ActivityManager")
+                val memInfoClass = Class.forName("android.app.ActivityManager\$MemoryInfo")
+                val memInfo = memInfoClass.getConstructor().newInstance()
+                val actManager = context.getSystemService(Context.ACTIVITY_SERVICE)
+                if (actManager != null) {
+                    val getMemInfoMethod = actManagerClass.getMethod("getMemoryInfo", memInfoClass)
+                    getMemInfoMethod.invoke(actManager, memInfo)
+                    val availMemField = memInfoClass.getField("availMem")
+                    val availBytes = availMemField.getLong(memInfo)
+                    return availBytes / (1024L * 1024L)
+                }
+            } catch (_: Exception) {}
+        }
+
+        // Fallback to /proc/meminfo or Java runtime memory
         return try {
             val file = File("/proc/meminfo")
             if (file.exists()) {
@@ -414,22 +535,34 @@ open class MediaPipeSLMModel(
         val engine = nativeEngineInstance
             ?: throw IllegalStateException("MediaPipe GenAI native runtime is not loaded on this host.")
 
-        val generateMethod = engine.javaClass.getMethod("generateResponse", String::class.java)
-        return generateMethod.invoke(engine, prompt) as String
+        // Support direct generateResponse(prompt) and session-based LlmInferenceSession
+        return try {
+            val generateMethod = engine.javaClass.getMethod("generateResponse", String::class.java)
+            generateMethod.invoke(engine, prompt) as String
+        } catch (e: NoSuchMethodException) {
+            val sessionClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession")
+            val sessionOptionsClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession\$LlmInferenceSessionOptions")
+            val sessionBuilder = sessionOptionsClass.getMethod("builder").invoke(null)
+            val sessionOptions = sessionBuilder.javaClass.getMethod("build").invoke(sessionBuilder)
+            val session = sessionClass.getMethod("createFromOptions", engine.javaClass, sessionOptionsClass)
+                .invoke(null, engine, sessionOptions)
+            val sessionGenerate = session.javaClass.getMethod("generateResponse", String::class.java)
+            sessionGenerate.invoke(session, prompt) as String
+        }
     }
 
     override fun generateCoaching(input: AIModelInput): AIModelResponse {
         // 1. Check if model weights exist on device
         if (!isReady) {
             val resp = fallback.generateCoaching(input)
-            return resp.copy(provider = "$modelName (fallback: weights not installed at $modelPath)")
+            return resp.copy(provider = "$modelName (fallback: weights not installed at ${modelPath ?: "unspecified"})")
         }
 
         // 2. Check memory sufficiency
         val freeMem = getAvailableMemoryMb()
-        if (freeMem < minFreeRamMb) {
+        if (freeMem < config.minFreeRamMb) {
             val resp = fallback.generateCoaching(input)
-            return resp.copy(provider = "$modelName (fallback: low RAM ${freeMem}MB < ${minFreeRamMb}MB)")
+            return resp.copy(provider = "$modelName (fallback: low RAM ${freeMem}MB < ${config.minFreeRamMb}MB)")
         }
 
         // 3. Check native engine availability
@@ -445,15 +578,25 @@ open class MediaPipeSLMModel(
         return try {
             val executor = Executors.newSingleThreadExecutor()
             val future = executor.submit(Callable { executeInference(prompt) })
-            val rawOutput = future.get(timeoutMs, TimeUnit.MILLISECONDS)
+            val rawOutput = future.get(config.timeoutMs, TimeUnit.MILLISECONDS)
             val elapsed = (System.currentTimeMillis() - startTime).toDouble()
             parseSlmJson(rawOutput, input, elapsed)
         } catch (e: TimeoutException) {
             val resp = fallback.generateCoaching(input)
-            resp.copy(provider = "$modelName (fallback: inference timeout > ${timeoutMs}ms)")
+            resp.copy(provider = "$modelName (fallback: inference timeout > ${config.timeoutMs}ms)")
         } catch (e: Exception) {
             val resp = fallback.generateCoaching(input)
             resp.copy(provider = "$modelName (fallback: ${e.message?.take(40) ?: "inference error"})")
+        }
+    }
+
+    override fun close() {
+        nativeEngineInstance?.let { engine ->
+            try {
+                val closeMethod = engine.javaClass.getMethod("close")
+                closeMethod.invoke(engine)
+            } catch (_: Exception) {}
+            nativeEngineInstance = null
         }
     }
 }
@@ -465,21 +608,22 @@ object LocalAIModelFactory {
     fun getModel(
         context: Context? = null,
         provider: String = "fallback",
-        modelPath: String = "/data/local/tmp/gemma-2b-it-cpu-int4.bin",
-        minFreeRamMb: Long = 400L
+        modelPath: String? = null,
+        config: ModelConfig = ModelConfig.DEFAULT
     ): LocalAIModel {
         if (provider.equals("mediapipe", ignoreCase = true) ||
             provider.equals("gemma", ignoreCase = true) ||
-            provider.equals("ondevice", ignoreCase = true)
+            provider.equals("ondevice", ignoreCase = true) ||
+            provider.equals("slm", ignoreCase = true)
         ) {
-            if (File(modelPath).exists()) {
-                return MediaPipeSLMModel(
-                    context = context,
-                    modelName = "mediapipe-gemma-2b-local",
-                    modelPath = modelPath,
-                    minFreeRamMb = minFreeRamMb
-                )
-            }
+            val resolved = ModelConfig.resolveModelPath(context, modelPath ?: config.modelPath, config.candidatePaths)
+            val resolvedConfig = if (modelPath != null) config.copy(modelPath = resolved) else config
+            return MediaPipeSLMModel(
+                context = context,
+                modelName = "mediapipe-gemma-2b-local",
+                modelPath = resolved,
+                config = resolvedConfig
+            )
         }
         return FallbackAIModel()
     }

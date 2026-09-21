@@ -13,3 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Model weights
+*.bin
+*.task
+*.litert
+*.safetensors
+*.gguf
+*.onnx
+*.tflite
+models/

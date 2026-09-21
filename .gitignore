@@ -55,6 +55,8 @@ Thumbs.db
 # Local AI Model Weights, Runtime Envs & Cache (Never commit weights)
 models/
 *.bin
+*.task
+*.litert
 *.safetensors
 *.gguf
 *.onnx
