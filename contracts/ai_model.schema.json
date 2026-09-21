@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LocalAIModelContract",
+  "description": "Schema definitions for the Local AI Model Integration Layer (AIModelInput and AIModelResponse) for on-device natural-language coaching",
+  "definitions": {
+    "AIModelInput": {
+      "type": "object",
+      "description": "Privacy-preserving structured evidence payload passed from Insight Engine to Local AI Model",
+      "properties": {
+        "currentTask": {
+          "type": "string",
+          "description": "Category or type of task currently engaged (e.g. coding, writing, meeting, planning)",
+          "default": "general"
+        },
+        "productivityScore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Current productivity readiness score (0-100)"
+        },
+        "fatigue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Calculated cognitive fatigue score (0-100)"
+        },
+        "fatigueLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "Cognitive fatigue severity tier"
+        },
+        "distraction": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Calculated distraction sensitivity score (0-100)"
+        },
+        "contextSwitches": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of recent app/task context switches in the active window"
+        },
+        "context": {
+          "type": "string",
+          "description": "Sanitized physical context label (e.g. Home Office, Cafe, Library)"
+        },
+        "peakWindow": {
+          "type": "string",
+          "description": "User's calibrated peak productivity time window (e.g. 09:00 - 11:00)"
+        },
+        "isInPeakWindow": {
+          "type": "boolean",
+          "description": "Whether current evaluation time falls within the user's peak window"
+        },
+        "prediction": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Task readiness likelihood forecast score (0-100)"
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "Operational risk of fatigue, abandonment, or context disruption"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "Statistical confidence in current telemetry calibration"
+        },
+        "detectedTrigger": {
+          "type": ["string", "null"],
+          "description": "Primary behavioral friction trigger identified by the Insight Engine"
+        },
+        "facts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sanitized bulleted factual observations driving this evaluation"
+        }
+      },
+      "required": [
+        "currentTask",
+        "productivityScore",
+        "fatigue",
+        "distraction",
+        "context",
+        "peakWindow",
+        "prediction",
+        "confidence"
+      ]
+    },
+    "AIModelResponse": {
+      "type": "object",
+      "description": "Structured natural-language coaching output returned by the Local AI Model",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "1-2 sentence supportive, actionable natural-language coaching guidance"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Clear explainable evidence driving the coaching recommendation"
+        },
+        "action": {
+          "type": "string",
+          "description": "Specific concrete next step for the user"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "Confidence level of the generated coaching response"
+        },
+        "provider": {
+          "type": "string",
+          "description": "Identifier of model provider (e.g. fallback, gemma-2b, tinyllama)"
+        },
+        "isFallback": {
+          "type": "boolean",
+          "description": "True if response was produced by the deterministic fallback coach"
+        }
+      },
+      "required": [
+        "message",
+        "reason",
+        "action",
+        "confidence"
+      ]
+    }
+  }
+}

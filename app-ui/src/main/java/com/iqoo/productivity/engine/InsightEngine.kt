@@ -126,9 +126,24 @@ data class InsightResult(
         distractionPattern = "Insufficient sessions",
         profileConfidence = "LOW"
     ),
-    val adaptiveRecommendations: List<AdaptiveRecommendation> = emptyList(),
     val taskPrediction: TaskPrediction? = null,
-    val predictionCalibration: PredictionCalibration = PredictionCalibration()
+    val predictionCalibration: PredictionCalibration = PredictionCalibration(),
+    val coachEvaluation: CoachEvaluation? = null
+)
+
+data class CoachEvaluation(
+    val state: String, // OPTIMAL, NORMAL, AT_RISK, RECOVERY
+    val score: Int,
+    val trigger: String,
+    val evidence: List<String>,
+    val intervention: String?,
+    val urgency: String, // LOW, MEDIUM, HIGH, CRITICAL
+    val confidence: String, // LOW, MEDIUM, HIGH
+    val isInterventionSuppressed: Boolean = false,
+    val suppressionReason: String? = null,
+    val structuredEvidence: Map<String, Any> = emptyMap(),
+    val localModelPrompt: String = "",
+    val fallbackMessage: String = ""
 )
 
 /**
@@ -1143,6 +1158,342 @@ class InsightEngine(
         this.predictionCalibration = updated.predictionCalibration
         return updated
     }
+
+    fun evaluateCurrentState(
+        taskType: String = "coding",
+        currentHour: Int? = null,
+        context: String? = null,
+        screenDuration: Long = 0L,
+        recentActivity: List<ContextSignal> = emptyList(),
+        lastInterventionTime: Long? = null,
+        lastTrigger: String? = null,
+        currentTime: Long? = null,
+        cooldownSeconds: Long = 900L
+    ): CoachEvaluation {
+        val nowMs = currentTime ?: System.currentTimeMillis()
+
+        // 1. Resolve Context
+        val resolvedContext = context ?: if (contextSignals.isNotEmpty()) {
+            contextSignals.last().location
+        } else if (tasks.isNotEmpty()) {
+            tasks.last().location ?: "Home Office"
+        } else {
+            "Home Office"
+        }
+
+        // 2. Resolve Current Hour
+        val resolvedHour = currentHour ?: run {
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = nowMs
+            cal.get(Calendar.HOUR_OF_DAY)
+        }
+
+        // 3. Analyze Recent Activity
+        var numSwitches = 0
+        var nonProdCount = 0
+        if (recentActivity.isNotEmpty()) {
+            for (i in recentActivity.indices) {
+                val cat = recentActivity[i].appCategory
+                if (cat in listOf("Social", "Entertainment", "Communication")) {
+                    nonProdCount++
+                }
+                if (i > 0 && cat != recentActivity[i - 1].appCategory) {
+                    numSwitches++
+                }
+            }
+        } else if (contextSignals.isNotEmpty()) {
+            val recentSlice = contextSignals.takeLast(10).filter {
+                Math.abs(nowMs - it.timestamp) <= 1800000L
+            }
+            for (i in recentSlice.indices) {
+                val cat = recentSlice[i].appCategory
+                if (cat in listOf("Social", "Entertainment", "Communication")) {
+                    nonProdCount++
+                }
+                if (i > 0 && cat != recentSlice[i - 1].appCategory) {
+                    numSwitches++
+                }
+            }
+        }
+
+        // 4. Baseline Analytics
+        val fatigue = detectFatigue()
+        val distraction = detectDistractionSensitivity()
+        val contextInsights = analyzeContexts()
+        val heatmap = generateHourlyHeatmap()
+        val taskTypes = analyzeTaskTypes()
+        val peakHourStr = detectPeakHour()
+        val profile = buildProductivityProfile(peakHourStr, contextInsights, fatigue, distraction, heatmap, taskTypes)
+        val bestWindow = profile.bestFocusWindow
+        val weakestWindow = profile.weakestFocusWindow
+        val bestContext = profile.bestContext
+        val confidence = profile.profileConfidence
+
+        // 5. Evaluate Telemetry & Compute Evidence
+        val evidence = mutableListOf<String>()
+        var rawScore = 100
+        val screenDurationMin = screenDuration / 60
+
+        var flagScreen = "NONE"
+        var flagSwitching = "NONE"
+        var flagFatigue = "NONE"
+        var flagWindow = "NONE"
+        var flagContext = "NONE"
+
+        // A. Screen Time
+        if (screenDuration >= 7200L) {
+            rawScore -= 40
+            evidence.add("Continuous screen time exceeds ${screenDurationMin} minutes (critical limit)")
+            flagScreen = "CRITICAL"
+        } else if (screenDuration >= 5400L) {
+            rawScore -= 25
+            evidence.add("Extended continuous screen time: ${screenDurationMin} minutes without a break")
+            flagScreen = "HIGH"
+        } else if (screenDuration >= 2700L) {
+            rawScore -= 15
+            evidence.add("Continuous screen duration reaching ${screenDurationMin} minutes")
+            flagScreen = "MEDIUM"
+        } else if (screenDuration >= 1800L) {
+            rawScore -= 5
+            evidence.add("Screen-on duration: ${screenDurationMin} minutes")
+            flagScreen = "LOW"
+        }
+
+        // B. Switching & Non-productive apps
+        if (numSwitches >= 6 || nonProdCount >= 4) {
+            rawScore -= 25
+            evidence.add("$numSwitches context switches in recent activity with $nonProdCount non-productive interruptions")
+            flagSwitching = "HIGH"
+        } else if (numSwitches >= 3 || nonProdCount >= 2) {
+            rawScore -= 15
+            evidence.add("Frequent context switching detected ($numSwitches switches, $nonProdCount non-productive signals)")
+            flagSwitching = "MEDIUM"
+        } else if (nonProdCount >= 1 || numSwitches >= 1) {
+            rawScore -= 5
+            evidence.add("Minor context disruption observed ($nonProdCount non-productive signals)")
+            flagSwitching = "LOW"
+        }
+
+        // C. Fatigue State
+        val fatigueScore = fatigue.second
+        if (fatigueScore >= 65) {
+            rawScore -= 25
+            evidence.add("Cognitive fatigue is elevated ($fatigueScore/100, HIGH)")
+            flagFatigue = "HIGH"
+        } else if (fatigueScore >= 35) {
+            rawScore -= 15
+            evidence.add("Moderate fatigue accumulation ($fatigueScore/100)")
+            flagFatigue = "MEDIUM"
+        } else {
+            flagFatigue = "LOW"
+        }
+
+        // D. Time-of-Day Window
+        var isInBestWindow = false
+        try {
+            val parts = bestWindow.split(" - ")
+            val wStart = parts[0].split(":")[0].toInt()
+            val wEnd = parts[1].split(":")[0].toInt()
+            isInBestWindow = if (wStart < wEnd) resolvedHour in wStart until wEnd else (resolvedHour >= wStart || resolvedHour < wEnd)
+        } catch (e: Exception) {
+            isInBestWindow = resolvedHour in 9 until 11
+        }
+
+        var isInWeakestWindow = false
+        if (weakestWindow != "None detected" && weakestWindow != "Insufficient Data") {
+            try {
+                val wparts = weakestWindow.split(" - ")
+                val wwStart = wparts[0].split(":")[0].toInt()
+                val wwEnd = wparts[1].split(":")[0].toInt()
+                isInWeakestWindow = if (wwStart < wwEnd) resolvedHour in wwStart until wwEnd else (resolvedHour >= wwStart || resolvedHour < wwEnd)
+            } catch (e: Exception) {
+                isInWeakestWindow = false
+            }
+        }
+
+        if (isInWeakestWindow) {
+            rawScore -= 20
+            evidence.add(String.format("Working at %02d:00 in your historically weakest window (%s)", resolvedHour, weakestWindow))
+            flagWindow = "WEAKEST"
+        } else if (!isInBestWindow) {
+            rawScore -= 10
+            evidence.add(String.format("Working at %02d:00 outside your peak focus window (%s)", resolvedHour, bestWindow))
+            flagWindow = "OFF_PEAK"
+        } else {
+            rawScore += 5
+            evidence.add(String.format("Working at %02d:00 inside your peak focus window (%s)", resolvedHour, bestWindow))
+            flagWindow = "PEAK"
+        }
+
+        // E. Context & Vulnerable Task
+        val isVulnerable = distraction.vulnerableCategories.any { it.equals(taskType, ignoreCase = true) }
+        val matchingCtx = contextInsights.firstOrNull { it.context.equals(resolvedContext, ignoreCase = true) }
+
+        if (isVulnerable && matchingCtx?.status == "Suboptimal") {
+            rawScore -= 20
+            evidence.add("'${taskType.replaceFirstChar { it.uppercase() }}' is highly vulnerable in '$resolvedContext' (${matchingCtx.completionRate}% completion)")
+            flagContext = "VULNERABLE_SUBOPTIMAL"
+        } else if (matchingCtx?.status == "Suboptimal") {
+            rawScore -= 10
+            evidence.add("Environment '$resolvedContext' has historically low completion (${matchingCtx.completionRate}%)")
+            flagContext = "SUBOPTIMAL"
+        } else if (matchingCtx?.status == "Optimal") {
+            rawScore += 5
+            evidence.add("Environment '$resolvedContext' is optimal (${matchingCtx.completionRate}% completion)")
+            flagContext = "OPTIMAL"
+        } else {
+            flagContext = "NEUTRAL"
+        }
+
+        // 6. Score & State Classification
+        val score = rawScore.coerceIn(0, 100)
+
+        val state: String
+        val urgency: String
+        val trigger: String
+
+        if (score >= 80 && flagScreen in listOf("NONE", "LOW") && flagFatigue == "LOW" && flagSwitching in listOf("NONE", "LOW")) {
+            state = "OPTIMAL"
+            urgency = "LOW"
+            trigger = "SUSTAINED_OPTIMAL_FLOW"
+        } else if (score >= 60 && flagScreen != "CRITICAL" && flagSwitching != "HIGH") {
+            state = "NORMAL"
+            urgency = "LOW"
+            trigger = "NORMAL_PACING"
+        } else if (score >= 35 || flagScreen == "HIGH" || flagSwitching == "HIGH" || flagFatigue == "HIGH") {
+            state = "AT_RISK"
+            urgency = if (score < 45 || flagScreen == "HIGH") "HIGH" else "MEDIUM"
+            trigger = when {
+                flagSwitching == "HIGH" -> "RAPID_CONTEXT_SWITCHING"
+                flagScreen in listOf("HIGH", "CRITICAL") -> "EXCESSIVE_SCREEN_TIME"
+                flagFatigue == "HIGH" -> "HIGH_FATIGUE_STRAIN"
+                flagContext == "VULNERABLE_SUBOPTIMAL" -> "VULNERABLE_TASK_CONTEXT"
+                flagWindow in listOf("WEAKEST", "OFF_PEAK") -> "OFF_PEAK_FRICTION"
+                else -> "PRODUCTIVITY_DROP"
+            }
+        } else {
+            state = "RECOVERY"
+            urgency = if (flagScreen == "CRITICAL" || score < 25) "CRITICAL" else "HIGH"
+            trigger = when {
+                flagScreen == "CRITICAL" -> "EXCESSIVE_SCREEN_TIME"
+                flagFatigue == "HIGH" -> "HIGH_FATIGUE_STRAIN"
+                flagSwitching == "HIGH" -> "RAPID_CONTEXT_SWITCHING"
+                else -> "SEVERE_COGNITIVE_BURNOUT"
+            }
+        }
+
+        // 7. Deterministic Fallback Coaching Message
+        val fallbackMessage = when (state) {
+            "RECOVERY" -> when (trigger) {
+                "EXCESSIVE_SCREEN_TIME" -> "Immediate recovery needed: You have been on-screen for $screenDurationMin minutes. Step away from all screens for a 15-minute physical reset."
+                "HIGH_FATIGUE_STRAIN" -> "Severe fatigue detected ($fatigueScore/100). Step away from $taskType for a 15-minute recovery walk before resuming."
+                else -> "Cognitive energy depleted (score: $score/100). Stop active tasks and take an immediate 15-minute recovery break."
+            }
+            "AT_RISK" -> when (trigger) {
+                "RAPID_CONTEXT_SWITCHING" -> "Take a 10-minute break, then start a 25-minute focused session."
+                "EXCESSIVE_SCREEN_TIME" -> "Take a 10-minute eye-rest break. Continuous screen time is at $screenDurationMin minutes."
+                "VULNERABLE_TASK_CONTEXT" -> "Relocate your $taskType session from $resolvedContext to $bestContext, or shift to a structured planning task."
+                "OFF_PEAK_FRICTION" -> "Working outside your peak window. Cap this $taskType block at 25 minutes and reschedule deep work to $bestWindow."
+                "HIGH_FATIGUE_STRAIN" -> "Fatigue is rising ($fatigueScore/100). Take a 10-minute recovery break to reset your focus."
+                else -> "Focus slipping (score: $score/100). Take a short 5-minute breather and mute non-essential notifications."
+            }
+            "NORMAL" -> "Pacing is steady (score: $score/100). Continue your current $taskType block in $resolvedContext."
+            else -> "Optimal flow state achieved (score: $score/100). Maintain sustained focus in $resolvedContext."
+        }
+
+        // 8. Anti-Spam Suppression Rules
+        var isSuppressed = false
+        var suppressionReason: String? = null
+
+        if (state in listOf("OPTIMAL", "NORMAL")) {
+            isSuppressed = true
+            suppressionReason = "SEVERITY_BELOW_THRESHOLD"
+        } else if (confidence == "LOW" && trigger in listOf("OFF_PEAK_FRICTION", "VULNERABLE_TASK_CONTEXT", "PRODUCTIVITY_DROP")) {
+            isSuppressed = true
+            suppressionReason = "LOW_CONFIDENCE"
+        } else if (lastInterventionTime != null) {
+            val elapsedSec = (nowMs - lastInterventionTime) / 1000.0
+            if (elapsedSec < cooldownSeconds && urgency != "CRITICAL") {
+                isSuppressed = true
+                suppressionReason = "COOLDOWN_ACTIVE"
+            }
+        }
+
+        if (!isSuppressed && lastTrigger != null && trigger == lastTrigger && lastInterventionTime != null) {
+            val elapsedSec = (nowMs - lastInterventionTime) / 1000.0
+            if (elapsedSec < (cooldownSeconds * 2) && urgency != "CRITICAL") {
+                isSuppressed = true
+                suppressionReason = "DUPLICATE_TRIGGER"
+            }
+        }
+
+        // 9. Final Intervention Message
+        val intervention = if (isSuppressed) null else fallbackMessage
+
+        // 10. Structured Evidence for Local AI Model
+        val structuredEvidence = mapOf<String, Any>(
+            "taskType" to taskType,
+            "currentHour" to resolvedHour,
+            "context" to resolvedContext,
+            "screenDurationSeconds" to screenDuration,
+            "screenDurationMinutes" to screenDurationMin,
+            "recentContextSwitches" to numSwitches,
+            "nonProductiveAppCount" to nonProdCount,
+            "fatigueScore" to fatigueScore,
+            "fatigueLevel" to fatigue.first,
+            "isInPeakWindow" to (flagWindow == "PEAK"),
+            "bestFocusWindow" to bestWindow,
+            "bestContext" to bestContext,
+            "facts" to evidence
+        )
+
+        val localModelPrompt = "System: You are an on-device personal productivity coach. Generate a 1-sentence supportive coaching intervention.\n" +
+            "Context: State=$state, Score=$score/100, Trigger=$trigger, Urgency=$urgency.\n" +
+            "Evidence: ${evidence.take(3).joinToString("; ")}.\n" +
+            "Coach:"
+
+        return CoachEvaluation(
+            state = state,
+            score = score,
+            trigger = trigger,
+            evidence = evidence,
+            intervention = intervention,
+            urgency = urgency,
+            confidence = confidence,
+            isInterventionSuppressed = isSuppressed,
+            suppressionReason = suppressionReason,
+            structuredEvidence = structuredEvidence,
+            localModelPrompt = localModelPrompt,
+            fallbackMessage = fallbackMessage
+        )
+    }
+}
+
+fun evaluateCurrentState(
+    tasks: List<Task>,
+    contextSignals: List<ContextSignal> = emptyList(),
+    taskType: String = "coding",
+    currentHour: Int? = null,
+    context: String? = null,
+    screenDuration: Long = 0L,
+    recentActivity: List<ContextSignal> = emptyList(),
+    lastInterventionTime: Long? = null,
+    lastTrigger: String? = null,
+    currentTime: Long? = null,
+    cooldownSeconds: Long = 900L
+): CoachEvaluation {
+    val engine = InsightEngine(tasks, contextSignals)
+    return engine.evaluateCurrentState(
+        taskType = taskType,
+        currentHour = currentHour,
+        context = context,
+        screenDuration = screenDuration,
+        recentActivity = recentActivity,
+        lastInterventionTime = lastInterventionTime,
+        lastTrigger = lastTrigger,
+        currentTime = currentTime,
+        cooldownSeconds = cooldownSeconds
+    )
 }
 
 fun predictTaskReadiness(

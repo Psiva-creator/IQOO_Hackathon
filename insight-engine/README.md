@@ -240,9 +240,87 @@ engine.updateUserModel(newTask, contextSignal)
 
 ---
 
+## ⏱️ Real-Time AI Coach
+
+The Real-Time AI Coach continuously monitors active work sessions to detect when the user is entering an unproductive, fatigued, or distracted state and generates an immediate, context-aware coaching intervention.
+
+### 1. Local AI Model Architecture
+```text
+Raw Signals (Screen, Context, Switches, Tasks)
+       │
+       ▼
+On-Device Analytics Engine (InsightEngine)
+       │
+       ▼
+Structured Evidence & Telemetry Synthesis
+       │
+       ├─────────────────────────────────────────┐
+       ▼                                         ▼
+Deterministic Fallback Message      Local Open-Source SLM / LLM
+(100% Offline, Zero-Dependency)     (On-Device Gemma 2B / SmolLM)
+       │                                         │
+       └────────────────────┬────────────────────┘
+                            │
+                            ▼
+           Actionable User Notification / UI Card
+```
+
+### 2. State & Score Classification
+The engine evaluates real-time telemetry into four discrete operational states:
+* **`OPTIMAL` ($80 - 100$):** In prime focus window, optimal environment, low fatigue, zero distractions. Interventions are suppressed to preserve flow.
+* **`NORMAL` ($60 - 79$):** Balanced focus metrics within healthy limits. No coaching intervention required.
+* **`AT_RISK` ($35 - 59$):** Cognitive energy slipping (e.g. $\ge 4$ context switches, screen time $\ge 45\text{m}$, or working in a suboptimal location). Generates actionable pacing advice.
+* **`RECOVERY` ($0 - 34$):** Severe screen strain ($\ge 90\text{m}$ continuous) or high mental exhaustion. Urgently prescribes stepping away from all screens.
+
+### 3. Detection Triggers
+1. **Excessive Continuous Screen Time:** Evaluates continuous `screenOnDuration` ($\ge 45\text{m}$, $\ge 90\text{m}$, $\ge 120\text{m}$).
+2. **Rapid App / Context Switching:** Detects frequent app switches or elevated usage of non-productive categories (`Social`, `Entertainment`, `Communication`).
+3. **Cognitive Fatigue Accumulation:** Integrated fatigue scoring factoring session duration shrinkage and afternoon degradation.
+4. **Off-Peak Friction:** Flags sessions occurring outside the user's calibrated `bestFocusWindow` or inside their `weakestFocusWindow`.
+5. **Vulnerable Task + Suboptimal Context:** Detects when distraction-prone tasks (e.g., writing) are attempted in low-completion environments (e.g., Cafe).
+
+### 4. Anti-Spam Throttling Policies
+To ensure the coach remains supportive and never annoys or spams the user:
+* **Severity Threshold:** Suppresses interventions if state is `OPTIMAL` or `NORMAL` (`SEVERITY_BELOW_THRESHOLD`).
+* **Confidence Threshold:** Suppresses uncalibrated pattern-based triggers when history has $< 5$ sessions (`LOW_CONFIDENCE`).
+* **Cooldown Window:** Enforces a configurable cooldown (default: 15 minutes / 900s) between non-critical interventions (`COOLDOWN_ACTIVE`).
+* **Duplicate Suppression:** Blocks repeating the exact same trigger within $2 \times$ cooldown period (`DUPLICATE_TRIGGER`).
+
+### 5. Android Integration Guide for Member A
+Member A can invoke the coach directly from Compose ViewModels, a background `CoroutineScope`, or a foreground focus timer:
+
+```kotlin
+import com.iqoo.productivity.engine.InsightEngine
+import com.iqoo.productivity.engine.CoachEvaluation
+
+// In ViewModel or Background Worker:
+val coach: CoachEvaluation = engine.evaluateCurrentState(
+    taskType = currentTask.type.name.lowercase(),
+    currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
+    context = currentContextSignal.location,
+    screenDuration = currentScreenOnSeconds,
+    recentActivity = recentContextSignalList,
+    lastInterventionTime = userPreferences.lastInterventionTimestamp,
+    lastTrigger = userPreferences.lastInterventionTrigger,
+    cooldownSeconds = 900L // 15-minute cooldown
+)
+
+// Show UI Banner or Notification only if intervention is needed and unsuppressed:
+if (coach.intervention != null && !coach.isInterventionSuppressed) {
+    showCoachNotification(
+        title = "AI Coach: ${coach.trigger}",
+        message = coach.intervention, // e.g. "Take a 10-minute break, then start a 25-minute focused session."
+        urgency = coach.urgency
+    )
+    userPreferences.recordIntervention(System.currentTimeMillis(), coach.trigger)
+}
+```
+
+---
+
 ## ⚖️ Limitations & Methodology
 
-* **Deterministic Statistical/Heuristic Engine:** All profile attributes, recommendations, predictions, and calibration updates are derived via transparent mathematical heuristics (exponential decay histograms, calibration errors, ratio drops, duration variance).
+* **Deterministic Statistical/Heuristic Engine:** All profile attributes, recommendations, predictions, calibration updates, and coach evaluations are derived via transparent mathematical heuristics (exponential decay histograms, calibration errors, ratio drops, duration variance).
 * **No Cloud AI / Zero Data Leakage:** This is **not** a cloud LLM or black-box neural network; it runs entirely within Android CPU processes with $< 20\text{ms}$ calculation latency.
 * **Sample Size Sensitivity & Cold-Start:** When `previousModel` is `null` or $< 5$ sessions exist, `profileConfidence` defaults to `LOW` and recommendations calibrate baseline readiness without making unfounded assumptions.
 
@@ -254,7 +332,7 @@ Run test suite:
 ```bash
 python3 -m unittest test_engine.py -v
 ```
-**29 comprehensive unit tests** cover:
+**38 comprehensive unit tests** cover:
 1. Backward compatibility for legacy contracts
 2. Peak morning hour detection
 3. Procrastination trigger detection
@@ -274,13 +352,23 @@ python3 -m unittest test_engine.py -v
 17. Fatigue & screen strain impact on prediction
 18. `analyze()` backward-compatible target task prediction
 19. Module-level convenience prediction helper
-20. **Online learning on completed task**
-21. **Online learning on abandoned task**
-22. **Online learning habit shift (changing peak focus hours)**
-23. **Online learning context shift (changing location preferences)**
-24. **Prediction calibration correct forecast**
-25. **Prediction calibration wrong forecast**
-26. **Cold start with `None` previous model**
-27. **Repeated sequential updates stability**
+20. Online learning on completed task
+21. Online learning on abandoned task
+22. Online learning habit shift (changing peak focus hours)
+23. Online learning context shift (changing location preferences)
+24. Prediction calibration correct forecast
+25. Prediction calibration wrong forecast
+26. Cold start with `None` previous model
+27. Repeated sequential updates stability
+28. **Coach evaluation: normal state suppression**
+29. **Coach evaluation: optimal state sustained flow**
+30. **Coach evaluation: high fatigue and screen time intervention**
+31. **Coach evaluation: rapid context switching distraction detection**
+32. **Coach evaluation: cold start / insufficient data safety**
+33. **Coach evaluation: duplicate trigger suppression**
+34. **Coach evaluation: cooldown window enforcement**
+35. **Coach evaluation: confidence threshold gating**
+36. **Coach evaluation: Kotlin/Python contract and schema parity**
+
 
 

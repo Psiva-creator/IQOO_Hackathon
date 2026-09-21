@@ -296,6 +296,9 @@
         }
       },
       "required": ["totalEvaluations", "accuratePredictions", "accuracyRate", "meanCalibrationError", "lastPredictionOutcome"]
+    },
+    "coachEvaluation": {
+      "$ref": "coach_evaluation.schema.json"
     }
   },
   "required": ["peakHour", "procrastinationTrigger", "bestContext", "recommendation"]

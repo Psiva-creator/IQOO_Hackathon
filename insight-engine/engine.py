@@ -7,7 +7,7 @@ Pure statistical and heuristic analytics running 100% on-device.
 import time
 from collections import defaultdict
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 class InsightEngine:
     def __init__(
@@ -930,6 +930,365 @@ class InsightEngine:
         return res
 
     updateUserModel = update_user_model
+
+    def evaluate_current_state(
+        self,
+        task_type: str = "coding",
+        current_hour: Optional[int] = None,
+        context: Optional[Union[str, Dict[str, Any]]] = None,
+        screen_duration: int = 0,
+        recent_activity: Optional[Union[List[Any], Dict[str, Any]]] = None,
+        last_intervention_time: Optional[int] = None,
+        last_trigger: Optional[str] = None,
+        current_time: Optional[int] = None,
+        cooldown_seconds: int = 900
+    ) -> Dict[str, Any]:
+        """
+        Real-Time AI Coach Evaluation.
+        Evaluates current user state (OPTIMAL, NORMAL, AT_RISK, RECOVERY), identifies
+        friction triggers, compiles structured evidence for local AI models, generates
+        offline-ready coaching interventions, and applies anti-spam throttling.
+        """
+        if current_time is None:
+            current_time = int(time.time() * 1000)
+
+        # 1. Resolve Context
+        if isinstance(context, dict):
+            context_loc = context.get("location") or "Home Office"
+            if screen_duration == 0:
+                screen_duration = int(context.get("screenOnDuration", 0))
+        elif isinstance(context, str):
+            context_loc = context
+        elif self.context_signals:
+            context_loc = self.context_signals[-1].get("location") or "Home Office"
+            if screen_duration == 0:
+                screen_duration = int(self.context_signals[-1].get("screenOnDuration", 0))
+        elif self.tasks:
+            context_loc = self.tasks[-1].get("location") or "Home Office"
+        else:
+            context_loc = "Home Office"
+
+        # 2. Resolve Current Hour
+        if current_hour is None:
+            if isinstance(context, dict) and "timestamp" in context:
+                current_hour = datetime.fromtimestamp(context["timestamp"] / 1000).hour
+            elif self.context_signals:
+                current_hour = datetime.fromtimestamp(self.context_signals[-1]["timestamp"] / 1000).hour
+            elif self.tasks:
+                current_hour = datetime.fromtimestamp(self.tasks[-1]["createdAt"] / 1000).hour
+            else:
+                current_hour = datetime.fromtimestamp(current_time / 1000).hour
+
+        # 3. Analyze Recent Activity
+        num_switches = 0
+        non_prod_count = 0
+        if isinstance(recent_activity, dict):
+            num_switches = recent_activity.get("contextSwitches", recent_activity.get("switches", 0))
+            non_prod_count = recent_activity.get("nonProductiveAppCount", recent_activity.get("nonProductiveSwitches", 0))
+        elif isinstance(recent_activity, list):
+            for i in range(len(recent_activity)):
+                item = recent_activity[i]
+                cat = item.get("appCategory") if isinstance(item, dict) else str(item)
+                if cat in ["Social", "Entertainment", "Communication"]:
+                    non_prod_count += 1
+                if i > 0:
+                    prev = recent_activity[i-1]
+                    prev_cat = prev.get("appCategory") if isinstance(prev, dict) else str(prev)
+                    if cat != prev_cat:
+                        num_switches += 1
+        elif self.context_signals:
+            recent_slice = [
+                s for s in self.context_signals[-10:]
+                if abs(current_time - s.get("timestamp", 0)) <= 1800000
+            ]
+            for i in range(len(recent_slice)):
+                item = recent_slice[i]
+                cat = item.get("appCategory", "")
+                if cat in ["Social", "Entertainment", "Communication"]:
+                    non_prod_count += 1
+                if i > 0 and cat != recent_slice[i-1].get("appCategory", ""):
+                    num_switches += 1
+
+        # 4. Profile & Baseline Analytics
+        fatigue = self._detect_fatigue()
+        distraction = self._detect_distraction_sensitivity()
+        context_insights = self._analyze_contexts()
+        heatmap = self._generate_hourly_heatmap()
+        task_types = self._analyze_task_types()
+        peak_hour_str = self._detect_peak_hour()
+        profile = self._build_productivity_profile(peak_hour_str, context_insights, fatigue, distraction, heatmap, task_types)
+        best_window = profile["bestFocusWindow"]
+        weakest_window = profile["weakestFocusWindow"]
+        best_context = profile["bestContext"]
+        confidence = profile["profileConfidence"]
+
+        # 5. Evaluate Telemetry & Compute Evidence
+        evidence = []
+        raw_score = 100
+        screen_duration_min = screen_duration // 60
+
+        flag_screen = "NONE"
+        flag_switching = "NONE"
+        flag_fatigue = "NONE"
+        flag_window = "NONE"
+        flag_context = "NONE"
+
+        # A. Screen Time
+        if screen_duration >= 7200: # 120m
+            raw_score -= 40
+            evidence.append(f"Continuous screen time exceeds {screen_duration_min} minutes (critical limit)")
+            flag_screen = "CRITICAL"
+        elif screen_duration >= 5400: # 90m
+            raw_score -= 25
+            evidence.append(f"Extended continuous screen time: {screen_duration_min} minutes without a break")
+            flag_screen = "HIGH"
+        elif screen_duration >= 2700: # 45m
+            raw_score -= 15
+            evidence.append(f"Continuous screen duration reaching {screen_duration_min} minutes")
+            flag_screen = "MEDIUM"
+        elif screen_duration >= 1800:
+            raw_score -= 5
+            evidence.append(f"Screen-on duration: {screen_duration_min} minutes")
+            flag_screen = "LOW"
+
+        # B. Switching & Non-productive apps
+        if num_switches >= 6 or non_prod_count >= 4:
+            raw_score -= 25
+            evidence.append(f"{num_switches} context switches in recent activity with {non_prod_count} non-productive interruptions")
+            flag_switching = "HIGH"
+        elif num_switches >= 3 or non_prod_count >= 2:
+            raw_score -= 15
+            evidence.append(f"Frequent context switching detected ({num_switches} switches, {non_prod_count} non-productive signals)")
+            flag_switching = "MEDIUM"
+        elif non_prod_count >= 1 or num_switches >= 1:
+            raw_score -= 5
+            evidence.append(f"Minor context disruption observed ({non_prod_count} non-productive signals)")
+            flag_switching = "LOW"
+
+        # C. Fatigue State
+        fatigue_score = fatigue.get("score", 0)
+        if fatigue_score >= 65:
+            raw_score -= 25
+            evidence.append(f"Cognitive fatigue is elevated ({fatigue_score}/100, HIGH)")
+            flag_fatigue = "HIGH"
+        elif fatigue_score >= 35:
+            raw_score -= 15
+            evidence.append(f"Moderate fatigue accumulation ({fatigue_score}/100)")
+            flag_fatigue = "MEDIUM"
+        else:
+            flag_fatigue = "LOW"
+
+        # D. Time-of-Day Window
+        try:
+            parts = best_window.split(" - ")
+            w_start = int(parts[0].split(":")[0])
+            w_end = int(parts[1].split(":")[0])
+            is_in_best_window = (w_start <= current_hour < w_end) if w_start < w_end else (current_hour >= w_start or current_hour < w_end)
+        except Exception:
+            is_in_best_window = (9 <= current_hour < 11)
+
+        is_in_weakest_window = False
+        if weakest_window not in ["None detected", "Insufficient Data"]:
+            try:
+                wparts = weakest_window.split(" - ")
+                ww_start = int(wparts[0].split(":")[0])
+                ww_end = int(wparts[1].split(":")[0])
+                is_in_weakest_window = (ww_start <= current_hour < ww_end) if ww_start < ww_end else (current_hour >= ww_start or current_hour < ww_end)
+            except Exception:
+                is_in_weakest_window = False
+
+        if is_in_weakest_window:
+            raw_score -= 20
+            evidence.append(f"Working at {current_hour:02d}:00 in your historically weakest window ({weakest_window})")
+            flag_window = "WEAKEST"
+        elif not is_in_best_window:
+            raw_score -= 10
+            evidence.append(f"Working at {current_hour:02d}:00 outside your peak focus window ({best_window})")
+            flag_window = "OFF_PEAK"
+        else:
+            raw_score += 5
+            evidence.append(f"Working at {current_hour:02d}:00 inside your peak focus window ({best_window})")
+            flag_window = "PEAK"
+
+        # E. Context & Vulnerable Task
+        is_vulnerable = task_type.lower() in [v.lower() for v in distraction.get("vulnerableCategories", [])]
+        matching_ctx = next((c for c in context_insights if c["context"].lower() == context_loc.lower()), None)
+
+        if is_vulnerable and (matching_ctx and matching_ctx["status"] == "Suboptimal"):
+            raw_score -= 20
+            evidence.append(f"'{task_type.capitalize()}' is highly vulnerable in '{context_loc}' ({matching_ctx['completionRate']}% completion)")
+            flag_context = "VULNERABLE_SUBOPTIMAL"
+        elif matching_ctx and matching_ctx["status"] == "Suboptimal":
+            raw_score -= 10
+            evidence.append(f"Environment '{context_loc}' has historically low completion ({matching_ctx['completionRate']}%)")
+            flag_context = "SUBOPTIMAL"
+        elif matching_ctx and matching_ctx["status"] == "Optimal":
+            raw_score += 5
+            evidence.append(f"Environment '{context_loc}' is optimal ({matching_ctx['completionRate']}% completion)")
+            flag_context = "OPTIMAL"
+        else:
+            flag_context = "NEUTRAL"
+
+        # 6. Score & State Classification
+        score = max(0, min(100, raw_score))
+
+        if score >= 80 and flag_screen in ["NONE", "LOW"] and flag_fatigue == "LOW" and flag_switching in ["NONE", "LOW"]:
+            state = "OPTIMAL"
+            urgency = "LOW"
+            trigger = "SUSTAINED_OPTIMAL_FLOW"
+        elif score >= 60 and flag_screen != "CRITICAL" and flag_switching != "HIGH":
+            state = "NORMAL"
+            urgency = "LOW"
+            trigger = "NORMAL_PACING"
+        elif score >= 35 or flag_screen == "HIGH" or flag_switching == "HIGH" or flag_fatigue == "HIGH":
+            state = "AT_RISK"
+            urgency = "HIGH" if (score < 45 or flag_screen == "HIGH") else "MEDIUM"
+            if flag_switching == "HIGH":
+                trigger = "RAPID_CONTEXT_SWITCHING"
+            elif flag_screen in ["HIGH", "CRITICAL"]:
+                trigger = "EXCESSIVE_SCREEN_TIME"
+            elif flag_fatigue == "HIGH":
+                trigger = "HIGH_FATIGUE_STRAIN"
+            elif flag_context == "VULNERABLE_SUBOPTIMAL":
+                trigger = "VULNERABLE_TASK_CONTEXT"
+            elif flag_window in ["WEAKEST", "OFF_PEAK"]:
+                trigger = "OFF_PEAK_FRICTION"
+            else:
+                trigger = "PRODUCTIVITY_DROP"
+        else:
+            state = "RECOVERY"
+            urgency = "CRITICAL" if (flag_screen == "CRITICAL" or score < 25) else "HIGH"
+            if flag_screen == "CRITICAL":
+                trigger = "EXCESSIVE_SCREEN_TIME"
+            elif flag_fatigue == "HIGH":
+                trigger = "HIGH_FATIGUE_STRAIN"
+            elif flag_switching == "HIGH":
+                trigger = "RAPID_CONTEXT_SWITCHING"
+            else:
+                trigger = "SEVERE_COGNITIVE_BURNOUT"
+
+        # 7. Deterministic Fallback Coaching Message
+        if state == "RECOVERY":
+            if trigger == "EXCESSIVE_SCREEN_TIME":
+                fallback_message = f"Immediate recovery needed: You have been on-screen for {screen_duration_min} minutes. Step away from all screens for a 15-minute physical reset."
+            elif trigger == "HIGH_FATIGUE_STRAIN":
+                fallback_message = f"Severe fatigue detected ({fatigue_score}/100). Step away from {task_type} for a 15-minute recovery walk before resuming."
+            else:
+                fallback_message = f"Cognitive energy depleted (score: {score}/100). Stop active tasks and take an immediate 15-minute recovery break."
+        elif state == "AT_RISK":
+            if trigger == "RAPID_CONTEXT_SWITCHING":
+                fallback_message = "Take a 10-minute break, then start a 25-minute focused session."
+            elif trigger == "EXCESSIVE_SCREEN_TIME":
+                fallback_message = f"Take a 10-minute eye-rest break. Continuous screen time is at {screen_duration_min} minutes."
+            elif trigger == "VULNERABLE_TASK_CONTEXT":
+                fallback_message = f"Relocate your {task_type} session from {context_loc} to {best_context}, or shift to a structured planning task."
+            elif trigger == "OFF_PEAK_FRICTION":
+                fallback_message = f"Working outside your peak window. Cap this {task_type} block at 25 minutes and reschedule deep work to {best_window}."
+            elif trigger == "HIGH_FATIGUE_STRAIN":
+                fallback_message = f"Fatigue is rising ({fatigue_score}/100). Take a 10-minute recovery break to reset your focus."
+            else:
+                fallback_message = f"Focus slipping (score: {score}/100). Take a short 5-minute breather and mute non-essential notifications."
+        elif state == "NORMAL":
+            fallback_message = f"Pacing is steady (score: {score}/100). Continue your current {task_type} block in {context_loc}."
+        else:
+            fallback_message = f"Optimal flow state achieved (score: {score}/100). Maintain sustained focus in {context_loc}."
+
+        # 8. Anti-Spam Suppression Rules
+        is_suppressed = False
+        suppression_reason = None
+
+        # Severity threshold: suppress interventions if NORMAL or OPTIMAL
+        if state in ["OPTIMAL", "NORMAL"]:
+            is_suppressed = True
+            suppression_reason = "SEVERITY_BELOW_THRESHOLD"
+
+        # Confidence threshold: suppress pattern-based interventions on cold start / sparse data
+        elif confidence == "LOW" and trigger in ["OFF_PEAK_FRICTION", "VULNERABLE_TASK_CONTEXT", "PRODUCTIVITY_DROP"]:
+            is_suppressed = True
+            suppression_reason = "LOW_CONFIDENCE"
+
+        # Cooldown period: check if recent intervention was triggered within cooldown window
+        elif last_intervention_time is not None and current_time is not None:
+            elapsed_sec = (current_time - last_intervention_time) / 1000.0
+            if elapsed_sec < cooldown_seconds and urgency != "CRITICAL":
+                is_suppressed = True
+                suppression_reason = "COOLDOWN_ACTIVE"
+
+        # Duplicate-trigger suppression
+        if not is_suppressed and last_trigger is not None and trigger == last_trigger:
+            if last_intervention_time is not None and current_time is not None:
+                elapsed_sec = (current_time - last_intervention_time) / 1000.0
+                if elapsed_sec < (cooldown_seconds * 2) and urgency != "CRITICAL":
+                    is_suppressed = True
+                    suppression_reason = "DUPLICATE_TRIGGER"
+
+        # 9. Final Intervention Message
+        intervention = None if is_suppressed else fallback_message
+
+        # 10. Structured Evidence for Local AI Model
+        structured_evidence = {
+            "taskType": task_type,
+            "currentHour": current_hour,
+            "context": context_loc,
+            "screenDurationSeconds": screen_duration,
+            "screenDurationMinutes": screen_duration_min,
+            "recentContextSwitches": num_switches,
+            "nonProductiveAppCount": non_prod_count,
+            "fatigueScore": fatigue_score,
+            "fatigueLevel": fatigue.get("level", "LOW"),
+            "isInPeakWindow": (flag_window == "PEAK"),
+            "bestFocusWindow": best_window,
+            "bestContext": best_context,
+            "facts": list(evidence)
+        }
+
+        local_model_prompt = (
+            f"System: You are an on-device personal productivity coach. Generate a 1-sentence supportive coaching intervention.\n"
+            f"Context: State={state}, Score={score}/100, Trigger={trigger}, Urgency={urgency}.\n"
+            f"Evidence: {'; '.join(evidence[:3])}.\n"
+            f"Coach:"
+        )
+
+        return {
+            "state": state,
+            "score": score,
+            "trigger": trigger,
+            "evidence": evidence,
+            "intervention": intervention,
+            "urgency": urgency,
+            "confidence": confidence,
+            "isInterventionSuppressed": is_suppressed,
+            "suppressionReason": suppression_reason,
+            "structuredEvidence": structured_evidence,
+            "localModelPrompt": local_model_prompt,
+            "fallbackMessage": fallback_message
+        }
+
+    evaluateCurrentState = evaluate_current_state
+
+def evaluate_current_state(
+    *args,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Module-level convenience wrapper for evaluate_current_state.
+    Supports flexible invocations:
+      evaluate_current_state(tasks, context_signals, task_type, current_hour, ...)
+      evaluate_current_state(task_type, current_hour, context, screen_duration, ...)
+    """
+    if len(args) >= 1 and isinstance(args[0], list):
+        tasks = args[0]
+        signals = args[1] if len(args) >= 2 and isinstance(args[1], list) else None
+        remaining_args = args[2:]
+        engine = InsightEngine(tasks, signals)
+        return engine.evaluate_current_state(*remaining_args, **kwargs)
+    else:
+        tasks = kwargs.pop("tasks", [])
+        signals = kwargs.pop("context_signals", [])
+        engine = InsightEngine(tasks, signals)
+        return engine.evaluate_current_state(*args, **kwargs)
+
+evaluateCurrentState = evaluate_current_state
 
 def predict_task_readiness(
     tasks: List[Dict[str, Any]],

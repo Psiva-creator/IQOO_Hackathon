@@ -559,6 +559,204 @@ class TestInsightEngine(unittest.TestCase):
         self.assertGreaterEqual(calib["accuracyRate"], 80.0)
         self.assertLessEqual(calib["meanCalibrationError"], 35.0)
 
+    # 7. Real-Time AI Coach Tests
+    def test_coach_normal_state(self):
+        # Steady session in home office with moderate duration and zero switches
+        now_ms = int(time.time() * 1000)
+        ev = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=10,
+            context="Home Office",
+            screen_duration=1200,
+            recent_activity=[],
+            current_time=now_ms
+        )
+        self.assertIn(ev["state"], ["NORMAL", "OPTIMAL"])
+        self.assertGreaterEqual(ev["score"], 60)
+        self.assertTrue(ev["isInterventionSuppressed"])
+        self.assertEqual(ev["suppressionReason"], "SEVERITY_BELOW_THRESHOLD")
+        self.assertIsNone(ev["intervention"])
+        self.assertEqual(ev["urgency"], "LOW")
+
+    def test_coach_optimal_state(self):
+        # Fresh user in peak morning focus window with minimal screen time and zero disruptions
+        tasks = [
+            {"id": f"t{i}", "title": f"Morning Coding {i}", "type": "coding", "createdAt": 10000000 + i*3600000, "completedAt": 10000000 + i*3600000 + 1800000, "duration": 1800, "location": "Home Office"}
+            for i in range(5)
+        ]
+        eng = InsightEngine(tasks, [])
+        ev = eng.evaluate_current_state(
+            task_type="coding",
+            current_hour=10,
+            context="Home Office",
+            screen_duration=600,
+            recent_activity=[]
+        )
+        self.assertEqual(ev["state"], "OPTIMAL")
+        self.assertGreaterEqual(ev["score"], 80)
+        self.assertEqual(ev["trigger"], "SUSTAINED_OPTIMAL_FLOW")
+        self.assertTrue(ev["isInterventionSuppressed"])
+        self.assertIsNone(ev["intervention"])
+
+    def test_coach_fatigue_state(self):
+        # Excessive screen duration of 90 minutes (5400s) triggers fatigue intervention
+        now_ms = int(time.time() * 1000)
+        ev = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            recent_activity=[],
+            current_time=now_ms
+        )
+        self.assertIn(ev["state"], ["AT_RISK", "RECOVERY"])
+        self.assertIn(ev["trigger"], ["EXCESSIVE_SCREEN_TIME", "HIGH_FATIGUE_STRAIN"])
+        self.assertFalse(ev["isInterventionSuppressed"])
+        self.assertIsNotNone(ev["intervention"])
+        self.assertTrue(any(word in ev["intervention"].lower() for word in ["screen", "fatigue", "break", "rest"]))
+
+    def test_coach_distraction_state(self):
+        # 7 rapid context switches in 10 minutes with 4 non-productive apps
+        now_ms = int(time.time() * 1000)
+        ev = self.engine.evaluate_current_state(
+            task_type="writing",
+            current_hour=15,
+            context="Cafe",
+            screen_duration=1800,
+            recent_activity={"contextSwitches": 7, "nonProductiveAppCount": 4},
+            current_time=now_ms
+        )
+        self.assertEqual(ev["state"], "AT_RISK")
+        self.assertEqual(ev["trigger"], "RAPID_CONTEXT_SWITCHING")
+        self.assertFalse(ev["isInterventionSuppressed"])
+        self.assertEqual(ev["intervention"], "Take a 10-minute break, then start a 25-minute focused session.")
+
+    def test_coach_insufficient_data(self):
+        # Empty engine (< 5 sessions, LOW confidence)
+        empty_engine = InsightEngine([], [])
+        ev = empty_engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=10,
+            context="Home Office",
+            screen_duration=600,
+            recent_activity=[]
+        )
+        self.assertEqual(ev["confidence"], "LOW")
+        self.assertTrue(ev["isInterventionSuppressed"])
+        self.assertIn(ev["suppressionReason"], ["SEVERITY_BELOW_THRESHOLD", "LOW_CONFIDENCE"])
+        self.assertIsNone(ev["intervention"])
+
+    def test_coach_duplicate_intervention_suppression(self):
+        now_ms = int(time.time() * 1000)
+        # 1st call: fresh rapid context switching -> fires intervention
+        ev1 = self.engine.evaluate_current_state(
+            task_type="writing",
+            current_hour=15,
+            context="Cafe",
+            screen_duration=1800,
+            recent_activity={"contextSwitches": 7, "nonProductiveAppCount": 4},
+            last_intervention_time=None,
+            last_trigger=None,
+            current_time=now_ms
+        )
+        self.assertFalse(ev1["isInterventionSuppressed"])
+        self.assertIsNotNone(ev1["intervention"])
+        self.assertEqual(ev1["trigger"], "RAPID_CONTEXT_SWITCHING")
+
+        # 2nd call: same trigger 5 minutes later (300,000ms ago) -> duplicate suppressed
+        ev2 = self.engine.evaluate_current_state(
+            task_type="writing",
+            current_hour=15,
+            context="Cafe",
+            screen_duration=1800,
+            recent_activity={"contextSwitches": 7, "nonProductiveAppCount": 4},
+            last_intervention_time=now_ms - 300000,
+            last_trigger="RAPID_CONTEXT_SWITCHING",
+            current_time=now_ms,
+            cooldown_seconds=900
+        )
+        self.assertTrue(ev2["isInterventionSuppressed"])
+        self.assertIn(ev2["suppressionReason"], ["DUPLICATE_TRIGGER", "COOLDOWN_ACTIVE"])
+        self.assertIsNone(ev2["intervention"])
+
+    def test_coach_cooldown(self):
+        now_ms = int(time.time() * 1000)
+        # Call 5 minutes after last intervention (900s / 15m cooldown)
+        ev_cooldown = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            recent_activity=[],
+            last_intervention_time=now_ms - 300000,
+            last_trigger="RAPID_CONTEXT_SWITCHING",
+            current_time=now_ms,
+            cooldown_seconds=900
+        )
+        self.assertTrue(ev_cooldown["isInterventionSuppressed"])
+        self.assertEqual(ev_cooldown["suppressionReason"], "COOLDOWN_ACTIVE")
+        self.assertIsNone(ev_cooldown["intervention"])
+
+        # Call after cooldown expired (16 minutes / 960,000ms later)
+        ev_expired = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            recent_activity=[],
+            last_intervention_time=now_ms - 960000,
+            last_trigger="RAPID_CONTEXT_SWITCHING",
+            current_time=now_ms,
+            cooldown_seconds=900
+        )
+        self.assertFalse(ev_expired["isInterventionSuppressed"])
+        self.assertIsNotNone(ev_expired["intervention"])
+
+    def test_coach_confidence_threshold(self):
+        # 2 tasks logged -> LOW confidence
+        sparse_tasks = [
+            {"id": "t1", "title": "Sparse 1", "type": "coding", "createdAt": 10000000, "completedAt": 10000000 + 1800000, "duration": 1800, "location": "Home Office"},
+            {"id": "t2", "title": "Sparse 2", "type": "coding", "createdAt": 13600000, "completedAt": 13600000 + 1800000, "duration": 1800, "location": "Home Office"}
+        ]
+        sparse_engine = InsightEngine(sparse_tasks, [])
+        # Working at 22:00 (off-peak) with normal screen duration
+        ev = sparse_engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=22,
+            context="Home Office",
+            screen_duration=900,
+            recent_activity=[]
+        )
+        self.assertEqual(ev["confidence"], "LOW")
+        # Pattern-based triggers are suppressed because confidence is LOW
+        self.assertTrue(ev["isInterventionSuppressed"])
+        self.assertIn(ev["suppressionReason"], ["LOW_CONFIDENCE", "SEVERITY_BELOW_THRESHOLD"])
+
+    def test_coach_kotlin_python_parity_structure(self):
+        from engine import evaluate_current_state
+        res = evaluate_current_state(
+            tasks=self.tasks,
+            context_signals=self.signals,
+            task_type="coding",
+            current_hour=10,
+            context="Home Office",
+            screen_duration=1200
+        )
+        required_coach_keys = [
+            "state", "score", "trigger", "evidence", "intervention",
+            "urgency", "confidence", "isInterventionSuppressed", "suppressionReason",
+            "structuredEvidence", "localModelPrompt", "fallbackMessage"
+        ]
+        for key in required_coach_keys:
+            self.assertIn(key, res)
+        self.assertIn(res["state"], ["OPTIMAL", "NORMAL", "AT_RISK", "RECOVERY"])
+        self.assertIn(res["urgency"], ["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+        self.assertIn(res["confidence"], ["LOW", "MEDIUM", "HIGH"])
+        self.assertIsInstance(res["score"], int)
+        self.assertIsInstance(res["evidence"], list)
+        self.assertIsInstance(res["structuredEvidence"], dict)
+
 if __name__ == "__main__":
     unittest.main()
+
 

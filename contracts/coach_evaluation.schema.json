@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CoachEvaluation",
+  "description": "Real-time AI Coach evaluation of the user's current focus, fatigue, and context state with intervention generation",
+  "type": "object",
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": ["OPTIMAL", "NORMAL", "AT_RISK", "RECOVERY"],
+      "description": "Real-time user state classification"
+    },
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Real-time focus and readiness score (0-100)"
+    },
+    "trigger": {
+      "type": "string",
+      "description": "Primary trigger that caused this evaluation state"
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Structured human-readable telemetry evidence driving the evaluation"
+    },
+    "intervention": {
+      "type": ["string", "null"],
+      "description": "Actionable coaching message, or null if suppressed or not needed"
+    },
+    "urgency": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+      "description": "Urgency level of intervention"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH"],
+      "description": "Confidence level based on historical calibration and signal volume"
+    },
+    "isInterventionSuppressed": {
+      "type": "boolean",
+      "description": "True if an intervention was suppressed by anti-spam policies"
+    },
+    "suppressionReason": {
+      "type": ["string", "null"],
+      "description": "Reason for suppression: COOLDOWN_ACTIVE, DUPLICATE_TRIGGER, LOW_CONFIDENCE, SEVERITY_BELOW_THRESHOLD, or null"
+    },
+    "structuredEvidence": {
+      "type": "object",
+      "description": "Machine-readable telemetry facts ready for local open-source LLM consumption"
+    },
+    "fallbackMessage": {
+      "type": "string",
+      "description": "Deterministic offline fallback coaching message"
+    }
+  },
+  "required": [
+    "state",
+    "score",
+    "trigger",
+    "evidence",
+    "urgency",
+    "confidence"
+  ]
+}
