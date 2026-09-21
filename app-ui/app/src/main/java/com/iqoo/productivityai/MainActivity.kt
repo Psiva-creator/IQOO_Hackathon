@@ -34,6 +34,7 @@ import androidx.room.Room
 import com.iqoo.productivityai.ui.theme.ProductivityAITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material3.ButtonDefaults
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -130,6 +131,7 @@ fun ProductivityApp() {
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
+                FocusHeader(isRunning = isRunning)
 
                 OutlinedTextField(
                     value = title,
@@ -209,7 +211,14 @@ fun ProductivityApp() {
                             title = ""
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isRunning) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                    )
                 ) {
                     Text(if (isRunning) "Stop Task" else "Start Task")
                 }
