@@ -38,6 +38,10 @@ wheels/
 venv/
 ENV/
 
+# Runtime telemetry & local fallback data
+data-sync/app_usage_history.json
+data-sync/sample_app_usage.json
+
 # Node.js
 node_modules/
 npm-debug.log*
