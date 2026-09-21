@@ -181,11 +181,9 @@ class FallbackAIModel : LocalAIModel {
         val resConf: String
 
         // 1. Missing / Insufficient Evidence (Cold Start)
-        val isInsufficient = conf == "LOW" &&
-                (score == 0 || score == 50) &&
-                fatigue == 0 &&
-                switches == 0 &&
-                (trigger == null || trigger == "NONE" || trigger == "CALIBRATING" || trigger == "LOW_CONFIDENCE")
+        val isInsufficient = conf == "LOW" ||
+                ((trigger == null || trigger == "NONE" || trigger == "CALIBRATING" || trigger == "LOW_CONFIDENCE" || trigger == "INSUFFICIENT_DATA") &&
+                (score == 0 || score == 50) && fatigue == 0 && switches == 0 && input.facts.isEmpty())
 
         if (isInsufficient) {
             return AIModelResponse(
@@ -216,7 +214,7 @@ class FallbackAIModel : LocalAIModel {
             } else {
                 message = "High fatigue detected during $task. Step away for a restorative break before resuming."
                 reason = "Cognitive fatigue score ($fatigue/100) has reached the high threshold."
-                action = "Take a 15-minute recovery walk or pause active tasks."
+                action = "Take a 15-minute recovery break or walk before resuming active tasks."
             }
             resConf = "HIGH"
         }

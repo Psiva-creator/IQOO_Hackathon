@@ -57,11 +57,9 @@ class FallbackAIModel(LocalAIModel):
 
         # 1. Missing / Insufficient Evidence (Cold Start)
         is_insufficient = (
-            conf == "LOW" and
-            (score == 0 or score == 50) and
-            fatigue == 0 and
-            switches == 0 and
-            trigger in [None, "NONE", "CALIBRATING", "LOW_CONFIDENCE"]
+            conf == "LOW" or
+            (trigger in [None, "NONE", "CALIBRATING", "LOW_CONFIDENCE", "INSUFFICIENT_DATA"] and
+             score in [0, 50] and fatigue == 0 and switches == 0 and not evidence.facts)
         )
         if is_insufficient:
             msg = "Focus calibration in progress. Log your focus blocks to unlock personalized coaching."
@@ -95,7 +93,7 @@ class FallbackAIModel(LocalAIModel):
             else:
                 msg = f"High fatigue detected during {task}. Step away for a restorative break before resuming."
                 reason = f"Cognitive fatigue score ({fatigue}/100) has reached the high threshold."
-                action = "Take a 15-minute recovery walk or pause active tasks."
+                action = "Take a 15-minute recovery break or walk before resuming active tasks."
             res_conf = "HIGH"
 
         # 4. High Distraction / Context Switching
