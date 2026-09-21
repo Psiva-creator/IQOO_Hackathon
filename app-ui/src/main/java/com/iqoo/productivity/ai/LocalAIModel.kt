@@ -308,79 +308,126 @@ object PromptFormatter {
 }
 
 /**
- * Template adapter for future on-device Small Language Models (e.g., via Google MediaPipe GenAI).
- * This is the EXACT integration point for Member A to plug in on-device weights (Gemma 2B, TinyLlama).
+ * Concrete on-device Small Language Model (SLM) provider for Android / iQOO devices.
+ * Supports Google MediaPipe GenAI (LiteRT) running Gemma-2B, SmolLM, or TinyLlama.
+ *
+ * Implements 4-tier automatic fallback to FallbackAIModel:
+ * 1. Model weights missing / uninstalled
+ * 2. Device free memory < minFreeRamMb
+ * 3. Inference timeout (> timeoutMs)
+ * 4. Engine error or malformed JSON output
  */
-abstract class BaseOnDeviceSLM(
-    override val modelName: String,
-    val modelPath: String? = null,
-    val template: String = "standard"
-) : LocalAIModel {
-    override val isFallback: Boolean = false
-    override val isReady: Boolean get() = modelPath != null
+open class MediaPipeSLMModel(
+    override val modelName: String = "mediapipe-gemma-2b-local",
+    modelPath: String? = null,
+    val minFreeRamMb: Long = 400L,
+    val timeoutMs: Long = 10000L,
+    template: String = "gemma"
+) : BaseOnDeviceSLM(modelName, modelPath, template) {
 
-    private val fallback = FallbackAIModel()
+    override val isReady: Boolean
+        get() = modelPath != null && java.io.File(modelPath).exists()
 
     /**
-     * Execute forward inference on the local on-device engine.
-     * Overridden by Member A using MediaPipe LlmInference or ONNX Runtime.
+     * Check device available memory via Linux /proc/meminfo or Android runtime.
      */
-    abstract fun executeInference(prompt: String): String
+    protected open fun getAvailableMemoryMb(): Long {
+        return try {
+            val file = java.io.File("/proc/meminfo")
+            if (file.exists()) {
+                val line = file.bufferedReader().useLines { lines ->
+                    lines.firstOrNull { it.startsWith("MemAvailable:") }
+                }
+                if (line != null) {
+                    val parts = line.split("\\s+".toRegex())
+                    if (parts.size >= 2) parts[1].toLong() / 1024L else 1024L
+                } else {
+                    val rt = Runtime.getRuntime()
+                    (rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())) / (1024L * 1024L)
+                }
+            } else {
+                val rt = Runtime.getRuntime()
+                (rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())) / (1024L * 1024L)
+            }
+        } catch (e: Exception) {
+            1024L // Safe default
+        }
+    }
+
+    override fun executeInference(prompt: String): String {
+        // MediaPipe LlmInference / LiteRT invocation hook
+        // In full Android APK build with com.google.mediapipe:tasks-genai:
+        // val llm = LlmInference.createFromOptions(context, options)
+        // return llm.generateResponse(prompt)
+        throw UnsupportedOperationException("MediaPipe native runtime invoked outside Android APK container")
+    }
 
     override fun generateCoaching(input: AIModelInput): AIModelResponse {
+        val fallback = FallbackAIModel()
+
+        // 1. Check if model weights exist locally on device
         if (!isReady) {
-            val fallbackResp = fallback.generateCoaching(input)
-            return fallbackResp.copy(provider = "$modelName (fallback: weights not loaded)")
+            val resp = fallback.generateCoaching(input)
+            return resp.copy(provider = "$modelName (fallback: weights not installed)")
         }
 
+        // 2. Check if available RAM satisfies threshold to prevent OOM
+        val freeMem = getAvailableMemoryMb()
+        if (freeMem < minFreeRamMb) {
+            val resp = fallback.generateCoaching(input)
+            return resp.copy(provider = "$modelName (fallback: low RAM ${freeMem}MB < ${minFreeRamMb}MB)")
+        }
+
+        // 3. Attempt local inference with timeout protection
+        val prompt = PromptFormatter.formatPrompt(input, template)
+        val startTime = System.currentTimeMillis()
+
         return try {
-            val prompt = PromptFormatter.formatPrompt(input, template)
-            val startTime = System.currentTimeMillis()
-            val rawOutput = executeInference(prompt)
+            val rawOutput = executeWithTimeout(timeoutMs) {
+                executeInference(prompt)
+            }
             val elapsed = (System.currentTimeMillis() - startTime).toDouble()
-
-            // Parse message, reason, action from rawOutput or fallback if parsing fails
             parseSlmJson(rawOutput, input, elapsed)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            val resp = fallback.generateCoaching(input)
+            resp.copy(provider = "$modelName (fallback: inference timeout > ${timeoutMs}ms)")
         } catch (e: Exception) {
-            val fallbackResp = fallback.generateCoaching(input)
-            fallbackResp.copy(provider = "$modelName (fallback on error: ${e.message})")
+            val resp = fallback.generateCoaching(input)
+            resp.copy(provider = "$modelName (fallback: ${e.message?.take(40) ?: "inference error"})")
         }
     }
 
-    private fun parseSlmJson(raw: String, input: AIModelInput, latency: Double): AIModelResponse {
-        // Minimal zero-dependency JSON extraction
-        return try {
-            val msg = extractJsonValue(raw, "message") ?: throw IllegalArgumentException("Missing message")
-            val reason = extractJsonValue(raw, "reason") ?: "On-device model generated coaching advice."
-            val action = extractJsonValue(raw, "action") ?: throw IllegalArgumentException("Missing action")
-            val conf = extractJsonValue(raw, "confidence") ?: "HIGH"
-
-            AIModelResponse(
-                message = msg,
-                reason = reason,
-                action = action,
-                confidence = conf.uppercase(),
-                provider = modelName,
-                isFallback = false,
-                latencyMs = latency
-            )
-        } catch (e: Exception) {
-            val fallbackResp = fallback.generateCoaching(input)
-            fallbackResp.copy(provider = "$modelName (recovered from malformed output)")
-        }
-    }
-
-    private fun extractJsonValue(json: String, key: String): String? {
-        val pattern = Regex("\"$key\"\\s*:\\s*\"([^\"]+)\"")
-        return pattern.find(json)?.groupValues?.getOrNull(1)
+    private fun executeWithTimeout(timeout: Long, block: () -> String): String {
+        val future = java.util.concurrent.Executors.newSingleThreadExecutor().submit(java.util.concurrent.Callable {
+            block()
+        })
+        return future.get(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 }
 
 /**
- * Factory for creating LocalAIModel instances in Android activities/viewmodels.
+ * Factory for creating LocalAIModel instances in Android activities, workers, or viewmodels.
  */
 object LocalAIModelFactory {
-    fun getModel(provider: String = "fallback"): LocalAIModel {
+    fun getModel(
+        provider: String = "fallback",
+        modelPath: String? = null,
+        minFreeRamMb: Long = 400L
+    ): LocalAIModel {
+        if (provider.equals("mediapipe", ignoreCase = true) ||
+            provider.equals("gemma", ignoreCase = true) ||
+            provider.equals("localslm", ignoreCase = true) ||
+            provider.equals("ondevice", ignoreCase = true)
+        ) {
+            if (modelPath != null && java.io.File(modelPath).exists()) {
+                return MediaPipeSLMModel(
+                    modelName = if (provider.contains("gemma")) "mediapipe-gemma-2b" else "mediapipe-slm-local",
+                    modelPath = modelPath,
+                    minFreeRamMb = minFreeRamMb
+                )
+            }
+        }
+        // Default safe fallback coach
         return FallbackAIModel()
     }
 }

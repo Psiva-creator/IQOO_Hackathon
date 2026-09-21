@@ -51,3 +51,16 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# Local AI Model Weights, Runtime Envs & Cache (Never commit weights)
+models/
+*.bin
+*.safetensors
+*.gguf
+*.onnx
+*.tflite
+*.pt
+*.pth
+ai_env/
+.cache/
+

@@ -412,6 +412,107 @@ class TestLocalAIModel(unittest.TestCase):
         custom_model = get_local_ai_model("custom")
         self.assertEqual(custom_model.model_name, "custom-test-provider")
 
+    # ------------------------------------------------------------------------
+    # 16. Real Local SLM Offline Inference (Zero Network Calls)
+    # ------------------------------------------------------------------------
+    def test_real_local_slm_offline_inference(self):
+        """Test genuine on-device SLM inference when local weights are installed."""
+        import os, socket
+        from ai_model.local_slm import LocalSLMModel
+
+        model_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "smollm-135m-instruct"))
+        if not os.path.exists(model_dir):
+            self.skipTest("Local model weights not installed on this test worker")
+
+        try:
+            import torch
+            import transformers
+        except ImportError:
+            self.skipTest("torch and transformers required for live local SLM execution")
+
+        # Block network sockets to guarantee strict offline execution
+        orig_connect = socket.socket.connect
+        def _blocked_connect(*args, **kwargs):
+            raise RuntimeError("NETWORK ATTEMPT DETECTED: Offline test failed")
+        socket.socket.connect = _blocked_connect
+
+        try:
+            slm = LocalSLMModel(model_path=model_dir)
+            self.assertTrue(slm.is_ready)
+
+            evidence = AIModelInput(
+                current_task="coding",
+                productivity_score=45,
+                fatigue=78,
+                context_switches=7,
+                risk_level="HIGH",
+                confidence="HIGH"
+            )
+            resp = slm.generate_coaching(evidence)
+
+            self.assertIsInstance(resp, AIModelResponse)
+            self.assertFalse(resp.is_fallback)
+            self.assertEqual(resp.provider, "smollm-135m-local")
+            self.assertTrue(len(resp.message) > 5)
+            self.assertTrue(len(resp.reason) > 5)
+            self.assertTrue(len(resp.action) > 3)
+            self.assertIn(resp.confidence, ["LOW", "MEDIUM", "HIGH"])
+        finally:
+            socket.socket.connect = orig_connect
+
+    # ------------------------------------------------------------------------
+    # 17. Local SLM Fallback on Uninstalled Weights
+    # ------------------------------------------------------------------------
+    def test_local_slm_fallback_on_uninstalled_weights(self):
+        """Test LocalSLMModel falls back seamlessly when model files are missing."""
+        from ai_model.local_slm import LocalSLMModel
+
+        missing_slm = LocalSLMModel(model_path="/nonexistent/model/path")
+        self.assertFalse(missing_slm.is_ready)
+
+        resp = missing_slm.generate_coaching({"currentTask": "coding", "fatigue": 80})
+        self.assertTrue(resp.is_fallback)
+        self.assertIn("fallback", resp.provider)
+        self.assertIn("uninstalled", resp.provider)
+        self.assertTrue(len(resp.message) > 5)
+
+    # ------------------------------------------------------------------------
+    # 18. Local SLM Fallback on Memory Pressure
+    # ------------------------------------------------------------------------
+    def test_local_slm_fallback_on_memory_pressure(self):
+        """Test LocalSLMModel falls back seamlessly when device RAM is constrained."""
+        from ai_model.local_slm import LocalSLMModel
+
+        # Request impossibly high free RAM threshold to simulate low-memory condition
+        starved_slm = LocalSLMModel(min_ram_mb=999999.0)
+        resp = starved_slm.generate_coaching({"currentTask": "meeting", "productivityScore": 60})
+
+        self.assertTrue(resp.is_fallback)
+        self.assertIn("insufficient RAM", resp.provider)
+        self.assertTrue(len(resp.message) > 5)
+
+    # ------------------------------------------------------------------------
+    # 19. Local SLM Fallback on Execution Error
+    # ------------------------------------------------------------------------
+    def test_local_slm_fallback_on_runtime_error(self):
+        """Test LocalSLMModel degrades gracefully when inference throws an exception."""
+        from ai_model.local_slm import LocalSLMModel
+
+        class BrokenSLM(LocalSLMModel):
+            @property
+            def is_ready(self) -> bool:
+                return True
+
+            def execute_inference(self, prompt: str) -> str:
+                raise RuntimeError("Simulated NPU driver crash")
+
+        broken_slm = BrokenSLM()
+        resp = broken_slm.generate_coaching({"currentTask": "coding"})
+
+        self.assertTrue(resp.is_fallback)
+        self.assertIn("fallback on error", resp.provider)
+        self.assertTrue(len(resp.message) > 5)
+
 
 if __name__ == "__main__":
     unittest.main()
