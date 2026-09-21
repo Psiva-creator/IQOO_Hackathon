@@ -22,17 +22,27 @@ STANDARD_CONTEXTS = {
 }
 
 
-def _sanitize_string(val: str, max_length: int = 100) -> str:
-    """Strip potential PII, URLs, and excessive length from string values."""
+def _sanitize_string(val: str, max_length: int = 120) -> str:
+    """
+    Strip potential PII, URLs, GPS coordinates, UUIDs, MAC addresses, phone numbers,
+    and long numeric IDs from string values.
+    """
     if not val:
         return ""
     # Strip URLs
-    cleaned = re.sub(r"https?://\S+|www\.\S+", "[URL_REDACTED]", val)
+    cleaned = re.sub(r"https?://\S+|www\.\S+", "[URL_REDACTED]", str(val))
     # Strip email addresses
-    cleaned = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "[EMAIL_REDACTED]", cleaned)
-    # Strip digits that look like phone numbers or IDs
-    cleaned = re.sub(r"\b\d{10,}\b", "[ID_REDACTED]", cleaned)
-    # Limit length
+    cleaned = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]", cleaned)
+    # Strip GPS coordinates (e.g. 37.7749, -122.4194)
+    cleaned = re.sub(r"[-+]?\d{1,3}\.\d+,\s*[-+]?\d{1,3}\.\d+", "[GPS_REDACTED]", cleaned)
+    # Strip UUIDs / device IDs
+    cleaned = re.sub(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "[DEVICE_ID_REDACTED]", cleaned)
+    # Strip MAC addresses
+    cleaned = re.sub(r"\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\b", "[DEVICE_ID_REDACTED]", cleaned)
+    # Strip phone numbers
+    cleaned = re.sub(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "[PHONE_REDACTED]", cleaned)
+    # Strip large digit sequences (>= 7 digits)
+    cleaned = re.sub(r"\b\d{7,}\b", "[ID_REDACTED]", cleaned)
     return cleaned.strip()[:max_length]
 
 
@@ -66,15 +76,21 @@ class AIModelInput:
         self.prediction = max(0, min(100, int(self.prediction)))
 
         # Sanitize task type: do not allow raw task titles like "Fix bug with client John Doe"
-        t_clean = self.current_task.lower().strip()
+        t_clean = re.sub(r"[^a-zA-Z0-9\s_-]", " ", str(self.current_task)).lower()
         matched = False
         for allowed in ALLOWED_TASK_TYPES:
-            if allowed in t_clean:
+            if re.search(r"\b" + re.escape(allowed) + r"\b", t_clean):
                 self.current_task = allowed
                 matched = True
                 break
         if not matched:
-            self.current_task = "general"
+            raw_stripped = str(self.current_task).strip().lower()
+            if re.fullmatch(r"[a-z0-9_-]{1,24}", raw_stripped) and not any(ch.isdigit() for ch in raw_stripped[:3]):
+                if not re.search(r"https?://|www\.|\@|[-+]?\d{1,3}\.\d+", raw_stripped):
+                    self.current_task = raw_stripped
+                    matched = True
+            if not matched:
+                self.current_task = "general"
 
         # Normalize enum fields
         self.fatigue_level = self.fatigue_level.upper() if self.fatigue_level in ["LOW", "MEDIUM", "HIGH"] else (
@@ -84,11 +100,21 @@ class AIModelInput:
         self.confidence = self.confidence.upper() if self.confidence in ["LOW", "MEDIUM", "HIGH"] else "MEDIUM"
 
         # Sanitize context location
-        ctx_clean = self.context.strip()
+        ctx_clean = str(self.context).strip()
         if ctx_clean.lower() in STANDARD_CONTEXTS:
             self.context = ctx_clean.title()
+        elif re.search(r"[-+]?\d{1,3}\.\d+", ctx_clean) or re.search(r"https?://|www\.", ctx_clean):
+            self.context = "Home Office"
         else:
-            self.context = _sanitize_string(ctx_clean, max_length=30) or "Home Office"
+            sanitized_ctx = _sanitize_string(ctx_clean, max_length=30)
+            self.context = sanitized_ctx.title() if sanitized_ctx else "Home Office"
+
+        # Sanitize peak window
+        self.peak_window = _sanitize_string(str(self.peak_window), max_length=30) or "09:00 - 11:00"
+
+        # Sanitize detected trigger
+        if self.detected_trigger:
+            self.detected_trigger = _sanitize_string(str(self.detected_trigger), max_length=40)
 
         # Sanitize facts list
         self.facts = [_sanitize_string(f, max_length=120) for f in self.facts if f]

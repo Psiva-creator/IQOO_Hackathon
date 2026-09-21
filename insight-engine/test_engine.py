@@ -1146,6 +1146,109 @@ class TestLocalSLMIntegration(unittest.TestCase):
         self.assertFalse(ev_none["isInterventionSuppressed"])
         self.assertEqual(ev_none["intervention"], ev_none["fallbackMessage"])
 
+    def test_closed_learning_loop_prediction_outcome_update_future_prediction(self):
+        """
+        Verify the complete closed learning loop:
+        1. Initial prediction: prediction under suboptimal context is low.
+        2. User outcome: user performs tasks and completes them.
+        3. Model/Profile update: update_user_model incorporates the new evidence and recalibrates.
+        4. Future prediction: updated model yields higher readiness score.
+        """
+        from engine import update_user_model
+        now_ms = int(time.time() * 1000)
+
+        # Baseline: coding at Cafe has 0% historical completion
+        baseline_tasks = [
+            {"id": "base-1", "type": "coding", "createdAt": now_ms - 86400000, "completedAt": now_ms - 82800000, "duration": 3600, "location": "Home Office"},
+            {"id": "base-2", "type": "coding", "createdAt": now_ms - 82800000, "completedAt": now_ms - 79200000, "duration": 3600, "location": "Home Office"},
+            {"id": "base-3", "type": "coding", "createdAt": now_ms - 79200000, "completedAt": None, "duration": 1200, "location": "Cafe", "status": "abandoned"},
+            {"id": "base-4", "type": "coding", "createdAt": now_ms - 75600000, "completedAt": None, "duration": 900, "location": "Cafe", "status": "abandoned"}
+        ]
+        base_engine = InsightEngine(baseline_tasks)
+
+        # Step 1: Predict readiness for coding at Cafe
+        pred_before = base_engine.predict_task_readiness(
+            task_type="coding",
+            current_hour=14,
+            current_context="Cafe",
+            recent_screen_duration=600
+        )
+        score_before = pred_before["predictedScore"]
+
+        # Step 2 & 3: User completes 5 consecutive successful coding sessions at Cafe
+        model = {"tasks": baseline_tasks, "contextSignals": []}
+        for i in range(5):
+            t_start = now_ms - (5 - i) * 3600000
+            new_task = {
+                "id": f"loop-cafe-{i}",
+                "title": f"Cafe Coding Session {i}",
+                "type": "coding",
+                "createdAt": t_start,
+                "completedAt": t_start + 3600000,
+                "duration": 3600,
+                "location": "Cafe",
+                "priority": "HIGH",
+                "predictedScore": score_before
+            }
+            model = update_user_model(model, new_task)
+
+        # Step 4: Verify calibration and profile updated
+        calib = model["predictionCalibration"]
+        self.assertGreater(calib["totalEvaluations"], 0)
+        self.assertIn("tasks", model)
+        self.assertEqual(len(model["tasks"]), 9)
+
+        # Step 5: Generate future prediction with updated model
+        updated_engine = InsightEngine(model["tasks"], model["contextSignals"], prediction_calibration=calib)
+        pred_after = updated_engine.predict_task_readiness(
+            task_type="coding",
+            current_hour=14,
+            current_context="Cafe",
+            recent_screen_duration=600
+        )
+        score_after = pred_after["predictedScore"]
+
+        # Step 6: Verify adaptation: score improved following verified success
+        self.assertGreater(score_after, score_before)
+
+    def test_edge_case_timeout_and_memory_pressure_resilience(self):
+        """Verify engine gracefully catches model timeouts and memory errors to return deterministic fallback."""
+        class TimeoutLocalAIModel:
+            model_name = "timeout-slm"
+            def generate_coaching(self, evidence):
+                raise TimeoutError("SLM forward pass exceeded 20s deadline")
+
+        class MemoryPressureLocalAIModel:
+            model_name = "oom-slm"
+            def generate_coaching(self, evidence):
+                raise MemoryError("Available device RAM < 200MB")
+
+        # 1. Timeout resilience
+        res_timeout = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            model=TimeoutLocalAIModel()
+        )
+        self.assertFalse(res_timeout["isInterventionSuppressed"])
+        self.assertEqual(res_timeout["intervention"], res_timeout["fallbackMessage"])
+        self.assertTrue(res_timeout["coachResponse"]["isFallback"])
+        self.assertIn("exceeded 20s deadline", res_timeout["coachResponse"]["error"])
+
+        # 2. OOM resilience
+        res_oom = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            model=MemoryPressureLocalAIModel()
+        )
+        self.assertFalse(res_oom["isInterventionSuppressed"])
+        self.assertEqual(res_oom["intervention"], res_oom["fallbackMessage"])
+        self.assertTrue(res_oom["coachResponse"]["isFallback"])
+        self.assertIn("RAM < 200MB", res_oom["coachResponse"]["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

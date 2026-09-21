@@ -371,7 +371,7 @@ Run test suite:
 ```bash
 python3 -m unittest test_engine.py -v
 ```
-**48 comprehensive unit tests** cover:
+**50 comprehensive unit tests** cover:
 1. Backward compatibility for legacy contracts
 2. Peak morning hour detection
 3. Procrastination trigger detection
@@ -420,3 +420,5 @@ python3 -m unittest test_engine.py -v
 46. SLM Failure Recovery: deterministic fallback on error or exception
 47. Asynchronous Non-Blocking Execution: background worker thread verification
 48. Module-level `evaluate_and_coach` and `evaluate_and_coach_async` aliases
+49. Closed Learning Loop: prediction → user outcome → model/profile update → future prediction adaptation
+50. Edge-Case Resilience: graceful recovery from model timeout and memory pressure exceptions

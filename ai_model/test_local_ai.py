@@ -280,22 +280,32 @@ class TestLocalAIModel(unittest.TestCase):
     # 10. Privacy Enforcement (Sanitization of Personal Data)
     # ------------------------------------------------------------------------
     def test_privacy_preservation_and_sanitization(self):
-        """Ensure raw PII, personal task titles, email, and URLs are stripped from AI input."""
+        """Ensure raw PII, personal task titles, email, URLs, GPS, UUIDs, and phones are stripped."""
         raw_evidence = {
             "currentTask": "Meeting with Alice about project https://secret.com/doc and email bob@iqoo.com",
             "productivityScore": 60,
             "fatigue": 20,
-            "context": "Cafe near 123 Main Street at lat 37.7749",
-            "facts": ["Visited https://confidential.internal for client #998877665544"]
+            "context": "Cafe near 123 Main Street at lat 37.7749,-122.4194",
+            "facts": [
+                "Visited https://confidential.internal for client #998877665544",
+                "Contact phone (555) 123-4567 on device 123e4567-e89b-12d3-a456-426614174000"
+            ]
         }
         clean_input = AIModelInput.from_dict(raw_evidence)
 
         # Task type must be sanitized to an approved category ("meeting")
         self.assertEqual(clean_input.current_task, "meeting")
-        # URLs must be stripped from facts
+        # GPS in context must default to safe location
+        self.assertEqual(clean_input.context, "Home Office")
+        # URLs, phones, UUIDs, and large IDs must be stripped from facts
         for f in clean_input.facts:
             self.assertNotIn("https://", f)
             self.assertNotIn("998877665544", f)
+            self.assertNotIn("(555)", f)
+            self.assertNotIn("123e4567", f)
+        self.assertIn("[URL_REDACTED]", clean_input.facts[0])
+        self.assertIn("[PHONE_REDACTED]", clean_input.facts[1])
+        self.assertIn("[DEVICE_ID_REDACTED]", clean_input.facts[1])
 
     # ------------------------------------------------------------------------
     # 11. Cross-Platform CamelCase API Parity
