@@ -9,10 +9,11 @@
 
 ```
 IQOO_Hackathon/
-├── app-ui/           ← Member A: Task Manager UI + Local Storage (Room DB)
+├── app-ui/           ← Member A: Task Manager UI + Local Storage (Room DB) + Kotlin LocalAIModel
 ├── insight-engine/   ← Member B: AI & Analytics Layer (Synthetic Data + Rule/Stats Engine)
+├── ai_model/         ← AI Model Integration Layer: Local Model Abstraction + Deterministic Fallback
 ├── data-sync/        ← Member C: Device Integration Layer (Context Capture + Office Kit Bridge)
-├── contracts/        ← Shared Schemas & Data Contracts (Task, Insight, Context Signal)
+├── contracts/        ← Shared Schemas & Data Contracts (Task, Insight, Context Signal, AI Model)
 ├── submission/       ← Shared (Day 2): PPT Skeleton, Demo Video Script & Deliverables
 ├── README.md         ← Project Architecture & Hackathon Roadmap
 └── .gitignore
@@ -88,6 +89,93 @@ Locked on Day 1 Morning so each member develops independently without blocking:
   "screenOnDuration": 2700
 }
 ```
+
+### 4. Local AI Model Contract (Defined in `contracts/ai_model.schema.json`)
+```json
+// Input: Privacy-preserving structured evidence
+{
+  "currentTask": "coding",
+  "productivityScore": 72,
+  "fatigue": 78,
+  "fatigueLevel": "HIGH",
+  "distraction": 45,
+  "contextSwitches": 7,
+  "context": "Home Office",
+  "peakWindow": "09:00 - 11:00",
+  "isInPeakWindow": false,
+  "prediction": 42,
+  "riskLevel": "HIGH",
+  "confidence": "HIGH",
+  "detectedTrigger": "RAPID_CONTEXT_SWITCHING"
+}
+
+// Output: Natural-language coaching
+{
+  "message": "You're showing signs of fatigue and frequent context switching. Take a short break before continuing.",
+  "reason": "Fatigue score is elevated (78/100) and 7 context switches were detected under HIGH risk.",
+  "action": "Take a short 10-minute break before continuing.",
+  "confidence": "HIGH",
+  "provider": "deterministic-fallback-v1",
+  "isFallback": true
+}
+```
+
+---
+
+## 🤖 Local AI Model Integration Layer
+
+### 1. Architectural Pipeline
+```
+Raw Mobile Signals (App switches, Screen-on duration, Locations)
+  ↓
+Insight Engine (Statistical aggregation, Fatigue calculation, Calibration)
+  ↓
+Structured Evidence (AIModelInput — strictly anonymized, zero raw personal data)
+  ↓
+Local AI Model Layer (LocalAIModel interface)
+  ├── FallbackAIModel (Deterministic offline heuristic coach — current active provider)
+  └── Future: BaseOnDeviceSLM (Gemma 2B / TinyLlama 1.1B via MediaPipe GenAI / ONNX Runtime)
+  ↓
+Natural-Language Coaching (AIModelResponse: message, reason, action, confidence)
+```
+
+### 2. Privacy-Preserving Structured Evidence (`AIModelInput`)
+The model **never receives unnecessary raw personal data**. All raw inputs (personal task titles, notes, full GPS coordinates, URLs, participant names, raw timestamps) are stripped and sanitized before reaching the model:
+* `currentTask`: Normalized to generic categories (`coding`, `writing`, `meeting`, `planning`, etc.).
+* `context`: Standardized location label (`Home Office`, `Office`, `Cafe`, `Library`).
+* `productivityScore`, `fatigue`, `distraction`, `prediction`: Aggregated normalized metrics ($0-100$).
+* `facts`: Anonymized operational telemetry observations.
+
+### 3. Deterministic Offline Fallback Coach (`FallbackAIModel`)
+Guarantees 100% offline, zero-dependency, reproducible execution even when no local small LLM is installed:
+* **Exemplar Match:** `fatigue=78, contextSwitches=7, risk=HIGH` → *"You're showing signs of fatigue and frequent context switching. Take a short break before continuing."*
+* **High Fatigue / Screen Strain:** Identifies continuous screen fatigue and prescribes 15-minute physical resets.
+* **High Distraction:** Flags frequent context switches and recommends muting notifications for a 25-minute sprint.
+* **Vulnerable Context:** Recommends relocating sessions when working in suboptimal environments.
+* **Optimal Flow:** Protects sustained focus momentum during peak conditions.
+* **Cold Start / Sparse Telemetry:** Provides gentle calibration guidance without making unfounded assumptions.
+
+### 4. Exact Integration Point for Future On-Device Model
+To plug in an actual small on-device model (e.g., **Gemma 2B** or **TinyLlama 1.1B**), no modifications are needed in the Insight Engine or UI layers:
+
+1. **Python:** Subclass `BaseOnDeviceSLM` in `ai_model/registry.py`:
+   ```python
+   class GemmaLocalModel(BaseOnDeviceSLM):
+       def execute_inference(self, prompt: str) -> str:
+           # Plug in on-device runtime (e.g., llama.cpp, ONNX Runtime, MediaPipe)
+           return self.engine.generate(prompt)
+
+   # Register provider
+   register_model_provider("gemma", GemmaLocalModel)
+   ```
+2. **Android / Kotlin:** Subclass `BaseOnDeviceSLM` in `com.iqoo.productivity.ai`:
+   ```kotlin
+   class MediaPipeGemmaModel(context: Context, modelPath: String) : BaseOnDeviceSLM("gemma-2b", modelPath) {
+       private val llmInference = LlmInference.createFromOptions(context, options)
+       override fun executeInference(prompt: String): String = llmInference.generateResponse(prompt)
+   }
+   ```
+3. **Resilient Degradation:** `BaseOnDeviceSLM` handles prompt construction (`PromptFormatter`), JSON extraction, and automatically falls back to `FallbackAIModel` if weights are missing, the runtime times out, or output is malformed.
 
 ---
 
