@@ -756,7 +756,312 @@ class TestInsightEngine(unittest.TestCase):
         self.assertIsInstance(res["evidence"], list)
         self.assertIsInstance(res["structuredEvidence"], dict)
 
+
+import asyncio
+import os
+import sys
+
+# Ensure ai_model is importable
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from ai_model.base import LocalAIModel
+from ai_model.models import AIModelInput, AIModelResponse
+from engine import evaluate_and_coach, evaluate_and_coach_async, _sanitize_text, _sanitize_task_type, _sanitize_context
+
+
+class MockLocalAIModel(LocalAIModel):
+    """Mock Local AI Model implementation for testing SLM integration."""
+    def __init__(
+        self,
+        model_name: str = "mock-slm-v1",
+        simulated_message: str = "Mock SLM coaching: Pace your work and take a 5-minute break.",
+        simulated_reason: str = "Elevated screen time detected by local model.",
+        simulated_action: str = "Step away from screens.",
+        should_raise: bool = False,
+        simulate_delay: float = 0.0
+    ):
+        self._model_name = model_name
+        self.simulated_message = simulated_message
+        self.simulated_reason = simulated_reason
+        self.simulated_action = simulated_action
+        self.should_raise = should_raise
+        self.simulate_delay = simulate_delay
+        self.calls = 0
+        self.received_inputs = []
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    def is_fallback(self) -> bool:
+        return False
+
+    def generate_coaching(self, input_data):
+        self.calls += 1
+        self.received_inputs.append(input_data)
+        if self.simulate_delay > 0:
+            time.sleep(self.simulate_delay)
+        if self.should_raise:
+            raise RuntimeError("Mock local NPU model out-of-memory error")
+        return AIModelResponse(
+            message=self.simulated_message,
+            reason=self.simulated_reason,
+            action=self.simulated_action,
+            confidence="HIGH",
+            provider=self.model_name,
+            is_fallback=False
+        )
+
+
+class TestLocalSLMIntegration(unittest.TestCase):
+    def setUp(self):
+        self.tasks, self.signals = generate_synthetic_tasks_and_signals(days=7)
+        self.engine = InsightEngine(self.tasks, self.signals)
+
+    def test_privacy_sanitizer_standalone_functions(self):
+        # 1. URL redaction
+        text_with_url = "Check dashboard at https://analytics.company.com/user/12345?secret=true"
+        clean = _sanitize_text(text_with_url)
+        self.assertNotIn("https://", clean)
+        self.assertIn("[URL_REDACTED]", clean)
+
+        # 2. Email redaction
+        text_with_email = "Contact engineer at dev.alice@company.org regarding bug"
+        clean_email = _sanitize_text(text_with_email)
+        self.assertNotIn("dev.alice@company.org", clean_email)
+        self.assertIn("[EMAIL_REDACTED]", clean_email)
+
+        # 3. GPS coordinates
+        text_with_gps = "User currently at 37.7749, -122.4194 in transit"
+        clean_gps = _sanitize_text(text_with_gps)
+        self.assertNotIn("37.7749", clean_gps)
+        self.assertIn("[GPS_REDACTED]", clean_gps)
+
+        # 4. Device ID / UUID
+        text_with_uuid = "device id 123e4567-e89b-12d3-a456-426614174000 reporting"
+        clean_uuid = _sanitize_text(text_with_uuid)
+        self.assertNotIn("123e4567", clean_uuid)
+        self.assertIn("[DEVICE_ID_REDACTED]", clean_uuid)
+
+        # 5. Phone number
+        text_with_phone = "Call 555-123-4567 or +1-800-555-0199 for sync"
+        clean_phone = _sanitize_text(text_with_phone)
+        self.assertNotIn("555-123-4567", clean_phone)
+        self.assertIn("[PHONE_REDACTED]", clean_phone)
+
+        # 6. Task type sanitization
+        self.assertEqual(_sanitize_task_type("Coding: fix PR #42 at https://github.com"), "coding")
+        self.assertEqual(_sanitize_task_type("Meeting with John Doe at john@corp.com"), "meeting")
+        self.assertEqual(_sanitize_task_type("Deep personal writing notes"), "writing")
+        self.assertEqual(_sanitize_task_type("Completely unknown title with secret PII"), "general")
+
+        # 7. Context sanitization
+        self.assertEqual(_sanitize_context("Home Office"), "Home Office")
+        self.assertEqual(_sanitize_context("cafe"), "Cafe")
+        self.assertEqual(_sanitize_context("37.7749, -122.4194"), "Home Office")
+        self.assertEqual(_sanitize_context("Office https://maps.google.com/?q=office"), "Home Office")
+
+    def test_evaluate_state_privacy_sanitization_end_to_end(self):
+        # Pass dangerous PII in task_type, context, and verify structuredEvidence & prompt
+        mock_model = MockLocalAIModel()
+        ev = self.engine.evaluate_current_state(
+            task_type="Secret client work with Alice (coding) at https://zoom.us/j/99999",
+            current_hour=15,
+            context="Private GPS: 37.7749, -122.4194 (Home Office)",
+            screen_duration=5400,
+            recent_activity=[],
+            model=mock_model
+        )
+
+        # Model should be called because screen duration is high (AT_RISK)
+        self.assertEqual(mock_model.calls, 1)
+
+        # Verify taskType is safely mapped to allowed whitelist
+        self.assertEqual(ev["structuredEvidence"]["currentTask"], "coding")
+        self.assertEqual(ev["structuredEvidence"]["taskType"], "coding")
+        self.assertNotIn("https://", ev["structuredEvidence"]["currentTask"])
+        self.assertNotIn("Alice", ev["structuredEvidence"]["currentTask"])
+
+        # Verify context is safely mapped to standard title
+        self.assertNotIn("37.7749", ev["structuredEvidence"]["context"])
+        self.assertNotIn("GPS", ev["structuredEvidence"]["context"])
+
+        # Verify prompt has no URLs or GPS
+        self.assertNotIn("https://", ev["localModelPrompt"])
+        self.assertNotIn("37.7749", ev["localModelPrompt"])
+        self.assertNotIn("Alice", ev["localModelPrompt"])
+
+        # Verify all facts are clean
+        for fact in ev["structuredEvidence"]["facts"]:
+            self.assertNotIn("https://", fact)
+            self.assertNotIn("37.7749", fact)
+
+    def test_slm_receives_complete_structured_evidence(self):
+        mock_model = MockLocalAIModel(simulated_message="Local SLM: Take a break from coding.")
+        ev = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=14,
+            context="Home Office",
+            screen_duration=6000,
+            recent_activity={"contextSwitches": 7, "nonProductiveAppCount": 3},
+            model=mock_model
+        )
+
+        self.assertEqual(mock_model.calls, 1)
+        evidence = ev["structuredEvidence"]
+
+        # Check required fields for SLM consumption
+        self.assertEqual(evidence["currentTask"], "coding")
+        self.assertIsInstance(evidence["productivityScore"], int)
+        self.assertIsInstance(evidence["fatigue"], int)
+        self.assertIn(evidence["fatigueLevel"], ["LOW", "MEDIUM", "HIGH"])
+        self.assertIsInstance(evidence["distraction"], int)
+        self.assertEqual(evidence["contextSwitches"], 7)
+        self.assertEqual(evidence["context"], "Home Office")
+        self.assertIn("bestFocusWindow", evidence)
+        self.assertIn("isInPeakWindow", evidence)
+        self.assertIn("prediction", evidence)
+        self.assertIn(evidence["riskLevel"], ["LOW", "MEDIUM", "HIGH"])
+        self.assertIn(evidence["confidence"], ["LOW", "MEDIUM", "HIGH"])
+        self.assertIsNotNone(evidence["detectedTrigger"])
+        self.assertIsInstance(evidence["facts"], list)
+        self.assertGreater(len(evidence["facts"]), 0)
+        self.assertIn("recommendationContext", evidence)
+
+        # Verify AIModelInput parses this structured evidence seamlessly
+        ai_input = AIModelInput.from_evidence(evidence)
+        self.assertEqual(ai_input.currentTask, "coding")
+        self.assertEqual(ai_input.contextSwitches, 7)
+        self.assertEqual(ai_input.context, "Home Office")
+
+        # Verify intervention was replaced by SLM output
+        self.assertEqual(ev["intervention"], "Local SLM: Take a break from coding.")
+        self.assertEqual(ev["modelProvider"], "mock-slm-v1")
+        self.assertEqual(ev["coachResponse"]["message"], "Local SLM: Take a break from coding.")
+
+    def test_anti_spam_suppression_bypasses_slm_inference(self):
+        mock_model = MockLocalAIModel()
+        now_ms = int(time.time() * 1000)
+
+        # Case 1: OPTIMAL state (score high, low screen duration) -> SEVERITY_BELOW_THRESHOLD
+        ev_optimal = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=10,
+            context="Home Office",
+            screen_duration=900,
+            recent_activity=[],
+            model=mock_model
+        )
+        self.assertTrue(ev_optimal["isInterventionSuppressed"])
+        self.assertEqual(ev_optimal["suppressionReason"], "SEVERITY_BELOW_THRESHOLD")
+        self.assertIsNone(ev_optimal["intervention"])
+        # SLM must NOT have been called!
+        self.assertEqual(mock_model.calls, 0)
+        self.assertIn("bypassed", ev_optimal["modelProvider"])
+
+        # Case 2: Cooldown active (within 900s)
+        ev_cooldown = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            recent_activity=[],
+            last_intervention_time=now_ms - 300000, # 5m ago
+            last_trigger="EXCESSIVE_SCREEN_TIME",
+            current_time=now_ms,
+            cooldown_seconds=900,
+            model=mock_model
+        )
+        self.assertTrue(ev_cooldown["isInterventionSuppressed"])
+        self.assertEqual(ev_cooldown["suppressionReason"], "COOLDOWN_ACTIVE")
+        self.assertIsNone(ev_cooldown["intervention"])
+        # SLM must still NOT have been called!
+        self.assertEqual(mock_model.calls, 0)
+
+        # Case 3: Duplicate trigger suppression
+        ev_duplicate = self.engine.evaluate_current_state(
+            task_type="writing",
+            current_hour=15,
+            context="Cafe",
+            screen_duration=1800,
+            recent_activity={"contextSwitches": 7, "nonProductiveAppCount": 4},
+            last_intervention_time=now_ms - 400000,
+            last_trigger="RAPID_CONTEXT_SWITCHING",
+            current_time=now_ms,
+            cooldown_seconds=900,
+            model=mock_model
+        )
+        self.assertTrue(ev_duplicate["isInterventionSuppressed"])
+        self.assertIn(ev_duplicate["suppressionReason"], ["DUPLICATE_TRIGGER", "COOLDOWN_ACTIVE"])
+        self.assertIsNone(ev_duplicate["intervention"])
+        self.assertEqual(mock_model.calls, 0)
+
+    def test_slm_error_graceful_deterministic_fallback(self):
+        failing_model = MockLocalAIModel(should_raise=True)
+        ev = self.engine.evaluate_current_state(
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400, # Trigger EXCESSIVE_SCREEN_TIME
+            recent_activity=[],
+            model=failing_model
+        )
+
+        # Model was called once and threw exception
+        self.assertEqual(failing_model.calls, 1)
+
+        # System must NOT crash and must cleanly use fallbackMessage
+        self.assertFalse(ev["isInterventionSuppressed"])
+        self.assertIsNotNone(ev["intervention"])
+        self.assertEqual(ev["intervention"], ev["fallbackMessage"])
+        self.assertTrue("fallback" in ev["modelProvider"].lower())
+        self.assertTrue(ev["coachResponse"]["isFallback"])
+
+    def test_async_evaluate_and_coach_non_blocking(self):
+        mock_model = MockLocalAIModel(
+            simulated_message="Async SLM: Smooth cognitive pacing.",
+            simulate_delay=0.02
+        )
+
+        async def run_async_test():
+            start_t = time.time()
+            res = await self.engine.evaluate_and_coach_async(
+                task_type="coding",
+                current_hour=15,
+                context="Home Office",
+                screen_duration=5400,
+                model=mock_model
+            )
+            elapsed = time.time() - start_t
+            return res, elapsed
+
+        res, elapsed = asyncio.run(run_async_test())
+        self.assertEqual(mock_model.calls, 1)
+        self.assertEqual(res["intervention"], "Async SLM: Smooth cognitive pacing.")
+        self.assertGreaterEqual(elapsed, 0.02)
+        self.assertIn("structuredEvidence", res)
+
+    def test_module_level_evaluate_and_coach_aliases(self):
+        mock_model = MockLocalAIModel(simulated_message="Module-level SLM coach.")
+        res = evaluate_and_coach(
+            tasks=self.tasks,
+            context_signals=self.signals,
+            task_type="coding",
+            current_hour=15,
+            context="Home Office",
+            screen_duration=5400,
+            model=mock_model
+        )
+        self.assertEqual(mock_model.calls, 1)
+        self.assertEqual(res["intervention"], "Module-level SLM coach.")
+        self.assertEqual(res["modelProvider"], "mock-slm-v1")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

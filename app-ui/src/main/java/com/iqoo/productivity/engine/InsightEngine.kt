@@ -1,8 +1,79 @@
 package com.iqoo.productivity.engine
 
+import com.iqoo.productivity.ai.LocalAIModel
+import com.iqoo.productivity.ai.AIModelInput
+import com.iqoo.productivity.ai.AIModelResponse
 import com.iqoo.productivity.model.Task
 import com.iqoo.productivity.model.TaskType
 import java.util.Calendar
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+
+object PrivacySanitizer {
+    val ALLOWED_TASKS = setOf(
+        "coding", "writing", "meeting", "reading", "planning",
+        "exercise", "design", "research", "admin", "general"
+    )
+
+    val STANDARD_CONTEXTS = setOf(
+        "Home Office", "Office", "Cafe", "Library", "Meeting Room",
+        "Transit", "Home", "Remote", "Focus Room"
+    )
+
+    private val URL_REGEX = Regex("https?://\\S+|www\\.\\S+")
+    private val EMAIL_REGEX = Regex("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b")
+    private val GPS_REGEX = Regex("[-+]?\\d{1,3}\\.\\d+,\\s*[-+]?\\d{1,3}\\.\\d+")
+    private val UUID_REGEX = Regex("\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b")
+    private val MAC_REGEX = Regex("\\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\\b")
+    private val PHONE_REGEX = Regex("\\b(?:\\+?\\d{1,3}[-.\\s]?)?\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b")
+    private val ID_REGEX = Regex("\\b\\d{7,}\\b")
+
+    fun sanitizeText(value: String?, maxLength: Int = 120): String {
+        if (value.isNullOrBlank()) return ""
+        var cleaned = value
+        cleaned = URL_REGEX.replace(cleaned, "[URL_REDACTED]")
+        cleaned = EMAIL_REGEX.replace(cleaned, "[EMAIL_REDACTED]")
+        cleaned = GPS_REGEX.replace(cleaned, "[GPS_REDACTED]")
+        cleaned = UUID_REGEX.replace(cleaned, "[DEVICE_ID_REDACTED]")
+        cleaned = MAC_REGEX.replace(cleaned, "[DEVICE_ID_REDACTED]")
+        cleaned = PHONE_REGEX.replace(cleaned, "[PHONE_REDACTED]")
+        cleaned = ID_REGEX.replace(cleaned, "[ID_REDACTED]")
+        return cleaned.trim().take(maxLength)
+    }
+
+    fun sanitizeTaskType(raw: String?): String {
+        if (raw.isNullOrBlank()) return "general"
+        val clean = raw.lowercase().trim()
+        for (allowed in ALLOWED_TASKS) {
+            if (clean.contains(allowed)) return allowed
+        }
+        return "general"
+    }
+
+    fun sanitizeContext(raw: String?): String {
+        if (raw.isNullOrBlank()) return "Home Office"
+        val trimmed = raw.trim()
+        for (std in STANDARD_CONTEXTS) {
+            if (trimmed.equals(std, ignoreCase = true)) return std
+        }
+        if (GPS_REGEX.containsMatchIn(trimmed) || URL_REGEX.containsMatchIn(trimmed)) {
+            return "Home Office"
+        }
+        val safe = sanitizeText(trimmed, maxLength = 30)
+        return safe.ifBlank { "Home Office" }
+    }
+}
+
+object BackgroundExecutor {
+    val instance: ExecutorService by lazy {
+        Executors.newFixedThreadPool(2) { r ->
+            val thread = Thread(r, "insight-slm-coach")
+            thread.isDaemon = true
+            thread
+        }
+    }
+}
 
 data class ContextSignal(
     val timestamp: Long,
@@ -143,8 +214,11 @@ data class CoachEvaluation(
     val suppressionReason: String? = null,
     val structuredEvidence: Map<String, Any> = emptyMap(),
     val localModelPrompt: String = "",
-    val fallbackMessage: String = ""
+    val fallbackMessage: String = "",
+    val coachResponse: Map<String, Any?>? = null,
+    val modelProvider: String? = null
 )
+
 
 /**
  * On-Device Habit & Productivity Insight Engine
@@ -1168,18 +1242,23 @@ class InsightEngine(
         lastInterventionTime: Long? = null,
         lastTrigger: String? = null,
         currentTime: Long? = null,
-        cooldownSeconds: Long = 900L
+        cooldownSeconds: Long = 900L,
+        model: LocalAIModel? = null
     ): CoachEvaluation {
         val nowMs = currentTime ?: System.currentTimeMillis()
 
+        // 0. Privacy Sanitization of Inputs
+        val cleanTaskType = PrivacySanitizer.sanitizeTaskType(taskType)
+
         // 1. Resolve Context
-        val resolvedContext = context ?: if (contextSignals.isNotEmpty()) {
+        val rawContext = context ?: if (contextSignals.isNotEmpty()) {
             contextSignals.last().location
         } else if (tasks.isNotEmpty()) {
             tasks.last().location ?: "Home Office"
         } else {
             "Home Office"
         }
+        val resolvedContext = PrivacySanitizer.sanitizeContext(rawContext)
 
         // 2. Resolve Current Hour
         val resolvedHour = currentHour ?: run {
@@ -1326,12 +1405,12 @@ class InsightEngine(
         }
 
         // E. Context & Vulnerable Task
-        val isVulnerable = distraction.vulnerableCategories.any { it.equals(taskType, ignoreCase = true) }
+        val isVulnerable = distraction.vulnerableCategories.any { it.equals(cleanTaskType, ignoreCase = true) }
         val matchingCtx = contextInsights.firstOrNull { it.context.equals(resolvedContext, ignoreCase = true) }
 
         if (isVulnerable && matchingCtx?.status == "Suboptimal") {
             rawScore -= 20
-            evidence.add("'${taskType.replaceFirstChar { it.uppercase() }}' is highly vulnerable in '$resolvedContext' (${matchingCtx.completionRate}% completion)")
+            evidence.add("'${cleanTaskType.replaceFirstChar { it.uppercase() }}' is highly vulnerable in '$resolvedContext' (${matchingCtx.completionRate}% completion)")
             flagContext = "VULNERABLE_SUBOPTIMAL"
         } else if (matchingCtx?.status == "Suboptimal") {
             rawScore -= 10
@@ -1382,22 +1461,25 @@ class InsightEngine(
             }
         }
 
+        // Sanitize all evidence strings
+        val sanitizedEvidence = evidence.map { PrivacySanitizer.sanitizeText(it) }
+
         // 7. Deterministic Fallback Coaching Message
         val fallbackMessage = when (state) {
             "RECOVERY" -> when (trigger) {
                 "EXCESSIVE_SCREEN_TIME" -> "Immediate recovery needed: You have been on-screen for $screenDurationMin minutes. Step away from all screens for a 15-minute physical reset."
-                "HIGH_FATIGUE_STRAIN" -> "Severe fatigue detected ($fatigueScore/100). Step away from $taskType for a 15-minute recovery walk before resuming."
+                "HIGH_FATIGUE_STRAIN" -> "Severe fatigue detected ($fatigueScore/100). Step away from $cleanTaskType for a 15-minute recovery walk before resuming."
                 else -> "Cognitive energy depleted (score: $score/100). Stop active tasks and take an immediate 15-minute recovery break."
             }
             "AT_RISK" -> when (trigger) {
                 "RAPID_CONTEXT_SWITCHING" -> "Take a 10-minute break, then start a 25-minute focused session."
                 "EXCESSIVE_SCREEN_TIME" -> "Take a 10-minute eye-rest break. Continuous screen time is at $screenDurationMin minutes."
-                "VULNERABLE_TASK_CONTEXT" -> "Relocate your $taskType session from $resolvedContext to $bestContext, or shift to a structured planning task."
-                "OFF_PEAK_FRICTION" -> "Working outside your peak window. Cap this $taskType block at 25 minutes and reschedule deep work to $bestWindow."
+                "VULNERABLE_TASK_CONTEXT" -> "Relocate your $cleanTaskType session from $resolvedContext to $bestContext, or shift to a structured planning task."
+                "OFF_PEAK_FRICTION" -> "Working outside your peak window. Cap this $cleanTaskType block at 25 minutes and reschedule deep work to $bestWindow."
                 "HIGH_FATIGUE_STRAIN" -> "Fatigue is rising ($fatigueScore/100). Take a 10-minute recovery break to reset your focus."
                 else -> "Focus slipping (score: $score/100). Take a short 5-minute breather and mute non-essential notifications."
             }
-            "NORMAL" -> "Pacing is steady (score: $score/100). Continue your current $taskType block in $resolvedContext."
+            "NORMAL" -> "Pacing is steady (score: $score/100). Continue your current $cleanTaskType block in $resolvedContext."
             else -> "Optimal flow state achieved (score: $score/100). Maintain sustained focus in $resolvedContext."
         }
 
@@ -1427,45 +1509,152 @@ class InsightEngine(
             }
         }
 
-        // 9. Final Intervention Message
-        val intervention = if (isSuppressed) null else fallbackMessage
+        // 9. Final Intervention Message (Default Fallback)
+        var finalIntervention: String? = if (isSuppressed) null else fallbackMessage
 
-        // 10. Structured Evidence for Local AI Model
+        // 10. Clean, Privacy-Sanitized Structured Evidence for Local AI Model
         val structuredEvidence = mapOf<String, Any>(
-            "taskType" to taskType,
-            "currentHour" to resolvedHour,
-            "context" to resolvedContext,
-            "screenDurationSeconds" to screenDuration,
-            "screenDurationMinutes" to screenDurationMin,
-            "recentContextSwitches" to numSwitches,
-            "nonProductiveAppCount" to nonProdCount,
+            "currentTask" to cleanTaskType,
+            "taskType" to cleanTaskType,
+            "productivityScore" to score,
+            "score" to score,
+            "fatigue" to fatigueScore,
             "fatigueScore" to fatigueScore,
             "fatigueLevel" to fatigue.first,
-            "isInPeakWindow" to (flagWindow == "PEAK"),
+            "distraction" to distraction.score,
+            "distractionScore" to distraction.score,
+            "contextSwitches" to numSwitches,
+            "recentContextSwitches" to numSwitches,
+            "context" to resolvedContext,
+            "peakWindow" to bestWindow,
             "bestFocusWindow" to bestWindow,
+            "isInPeakWindow" to (flagWindow == "PEAK"),
+            "prediction" to score,
+            "predictedScore" to score,
+            "riskLevel" to if (score < 45) "HIGH" else if (score < 70) "MEDIUM" else "LOW",
+            "confidence" to confidence,
+            "detectedTrigger" to trigger,
+            "trigger" to trigger,
+            "state" to state,
+            "urgency" to urgency,
+            "currentHour" to resolvedHour,
+            "screenDurationSeconds" to screenDuration,
+            "screenDurationMinutes" to screenDurationMin,
+            "nonProductiveAppCount" to nonProdCount,
             "bestContext" to bestContext,
-            "facts" to evidence
+            "recommendationContext" to mapOf(
+                "bestFocusWindow" to bestWindow,
+                "bestContext" to bestContext,
+                "weakestFocusWindow" to weakestWindow,
+                "isCurrentlyInPeak" to (flagWindow == "PEAK")
+            ),
+            "facts" to sanitizedEvidence
         )
 
         val localModelPrompt = "System: You are an on-device personal productivity coach. Generate a 1-sentence supportive coaching intervention.\n" +
-            "Context: State=$state, Score=$score/100, Trigger=$trigger, Urgency=$urgency.\n" +
-            "Evidence: ${evidence.take(3).joinToString("; ")}.\n" +
+            "Context: State=$state, Score=$score/100, Trigger=$trigger, Urgency=$urgency, Confidence=$confidence.\n" +
+            "Evidence: ${sanitizedEvidence.take(3).joinToString("; ")}.\n" +
             "Coach:"
+
+        // 11. Local AI Model Integration (Deterministic Fallback or Local SLM)
+        var coachResponseMap: Map<String, Any?>? = null
+        var modelProviderStr: String? = null
+
+        if (model != null) {
+            if (isSuppressed) {
+                // Anti-spam throttling bypass: skip model inference to preserve device battery and CPU/NPU cycles
+                modelProviderStr = "${model.modelName} (bypassed: intervention suppressed)"
+            } else {
+                try {
+                    val modelInput = AIModelInput.fromEvidence(structuredEvidence)
+                    val response = model.generateCoaching(modelInput)
+                    if (response.message.isNotBlank()) {
+                        finalIntervention = response.message
+                        coachResponseMap = response.toMap()
+                        modelProviderStr = response.provider
+                    } else {
+                        finalIntervention = fallbackMessage
+                        modelProviderStr = "${model.modelName} (empty output fallback)"
+                    }
+                } catch (e: Exception) {
+                    finalIntervention = fallbackMessage
+                    coachResponseMap = mapOf("error" to (e.message ?: "inference error"), "isFallback" to true)
+                    modelProviderStr = "${model.modelName} (fallback on error: ${e.message?.take(50) ?: "unknown"})"
+                }
+            }
+        }
 
         return CoachEvaluation(
             state = state,
             score = score,
             trigger = trigger,
-            evidence = evidence,
-            intervention = intervention,
+            evidence = sanitizedEvidence,
+            intervention = finalIntervention,
             urgency = urgency,
             confidence = confidence,
             isInterventionSuppressed = isSuppressed,
             suppressionReason = suppressionReason,
             structuredEvidence = structuredEvidence,
             localModelPrompt = localModelPrompt,
-            fallbackMessage = fallbackMessage
+            fallbackMessage = fallbackMessage,
+            coachResponse = coachResponseMap,
+            modelProvider = modelProviderStr
         )
+    }
+
+    fun evaluateAndCoach(
+        taskType: String = "coding",
+        currentHour: Int? = null,
+        context: String? = null,
+        screenDuration: Long = 0L,
+        recentActivity: List<ContextSignal> = emptyList(),
+        lastInterventionTime: Long? = null,
+        lastTrigger: String? = null,
+        currentTime: Long? = null,
+        cooldownSeconds: Long = 900L,
+        model: LocalAIModel? = null
+    ): CoachEvaluation = evaluateCurrentState(
+        taskType = taskType,
+        currentHour = currentHour,
+        context = context,
+        screenDuration = screenDuration,
+        recentActivity = recentActivity,
+        lastInterventionTime = lastInterventionTime,
+        lastTrigger = lastTrigger,
+        currentTime = currentTime,
+        cooldownSeconds = cooldownSeconds,
+        model = model
+    )
+
+    fun evaluateAndCoachAsync(
+        model: LocalAIModel?,
+        taskType: String = "coding",
+        currentHour: Int? = null,
+        context: String? = null,
+        screenDuration: Long = 0L,
+        recentActivity: List<ContextSignal> = emptyList(),
+        lastInterventionTime: Long? = null,
+        lastTrigger: String? = null,
+        currentTime: Long? = null,
+        cooldownSeconds: Long = 900L,
+        executor: Executor = BackgroundExecutor.instance,
+        callback: (CoachEvaluation) -> Unit
+    ) {
+        executor.execute {
+            val eval = evaluateCurrentState(
+                taskType = taskType,
+                currentHour = currentHour,
+                context = context,
+                screenDuration = screenDuration,
+                recentActivity = recentActivity,
+                lastInterventionTime = lastInterventionTime,
+                lastTrigger = lastTrigger,
+                currentTime = currentTime,
+                cooldownSeconds = cooldownSeconds,
+                model = model
+            )
+            callback(eval)
+        }
     }
 }
 
@@ -1480,7 +1669,8 @@ fun evaluateCurrentState(
     lastInterventionTime: Long? = null,
     lastTrigger: String? = null,
     currentTime: Long? = null,
-    cooldownSeconds: Long = 900L
+    cooldownSeconds: Long = 900L,
+    model: LocalAIModel? = null
 ): CoachEvaluation {
     val engine = InsightEngine(tasks, contextSignals)
     return engine.evaluateCurrentState(
@@ -1492,9 +1682,72 @@ fun evaluateCurrentState(
         lastInterventionTime = lastInterventionTime,
         lastTrigger = lastTrigger,
         currentTime = currentTime,
-        cooldownSeconds = cooldownSeconds
+        cooldownSeconds = cooldownSeconds,
+        model = model
     )
 }
+
+fun evaluateAndCoach(
+    tasks: List<Task>,
+    contextSignals: List<ContextSignal> = emptyList(),
+    taskType: String = "coding",
+    currentHour: Int? = null,
+    context: String? = null,
+    screenDuration: Long = 0L,
+    recentActivity: List<ContextSignal> = emptyList(),
+    lastInterventionTime: Long? = null,
+    lastTrigger: String? = null,
+    currentTime: Long? = null,
+    cooldownSeconds: Long = 900L,
+    model: LocalAIModel? = null
+): CoachEvaluation = evaluateCurrentState(
+    tasks = tasks,
+    contextSignals = contextSignals,
+    taskType = taskType,
+    currentHour = currentHour,
+    context = context,
+    screenDuration = screenDuration,
+    recentActivity = recentActivity,
+    lastInterventionTime = lastInterventionTime,
+    lastTrigger = lastTrigger,
+    currentTime = currentTime,
+    cooldownSeconds = cooldownSeconds,
+    model = model
+)
+
+fun evaluateAndCoachAsync(
+    tasks: List<Task>,
+    contextSignals: List<ContextSignal> = emptyList(),
+    model: LocalAIModel?,
+    taskType: String = "coding",
+    currentHour: Int? = null,
+    context: String? = null,
+    screenDuration: Long = 0L,
+    recentActivity: List<ContextSignal> = emptyList(),
+    lastInterventionTime: Long? = null,
+    lastTrigger: String? = null,
+    currentTime: Long? = null,
+    cooldownSeconds: Long = 900L,
+    executor: Executor = BackgroundExecutor.instance,
+    callback: (CoachEvaluation) -> Unit
+) {
+    val engine = InsightEngine(tasks, contextSignals)
+    engine.evaluateAndCoachAsync(
+        model = model,
+        taskType = taskType,
+        currentHour = currentHour,
+        context = context,
+        screenDuration = screenDuration,
+        recentActivity = recentActivity,
+        lastInterventionTime = lastInterventionTime,
+        lastTrigger = lastTrigger,
+        currentTime = currentTime,
+        cooldownSeconds = cooldownSeconds,
+        executor = executor,
+        callback = callback
+    )
+}
+
 
 fun predictTaskReadiness(
     tasks: List<Task>,
