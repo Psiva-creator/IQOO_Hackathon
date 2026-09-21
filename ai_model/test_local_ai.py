@@ -261,6 +261,21 @@ class TestLocalAIModel(unittest.TestCase):
         self.assertEqual(resp["message"], resp.message)
         self.assertEqual(resp.get("action"), resp.action)
 
+        # Strict JSON Schema validation against contracts/ai_model.schema.json
+        import os
+        schema_path = os.path.join(os.path.dirname(__file__), "..", "contracts", "ai_model.schema.json")
+        if os.path.exists(schema_path):
+            try:
+                import jsonschema
+                with open(schema_path) as f:
+                    schema = json.load(f)
+                input_schema = schema.get("definitions", {}).get("AIModelInput", {})
+                response_schema = schema.get("definitions", {}).get("AIModelResponse", {})
+                jsonschema.validate(instance=inp_dict, schema=input_schema)
+                jsonschema.validate(instance=resp_dict, schema=response_schema)
+            except ImportError:
+                pass
+
     # ------------------------------------------------------------------------
     # 10. Privacy Enforcement (Sanitization of Personal Data)
     # ------------------------------------------------------------------------
