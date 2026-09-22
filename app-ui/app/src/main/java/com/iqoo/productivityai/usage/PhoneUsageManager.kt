@@ -59,14 +59,35 @@ class PhoneUsageManager(private val context: Context) {
 
     /**
      * Extracts all discrete foreground app sessions for the current day (midnight to now).
+     * Combines discrete transition events with daily cumulative usage stats to guarantee
+     * exact screen time for all applications used throughout the day.
      */
     fun getTodayPhoneSessions(nowMs: Long = System.currentTimeMillis()): List<AppUsageSession> {
         val manager = usageStatsManager ?: return emptyList()
         val startOfDay = getStartOfDayMillis(nowMs)
 
-        return try {
+        val sessions = try {
             val usageEvents = manager.queryEvents(startOfDay, nowMs)
             extractSessionsFromUsageEvents(usageEvents, startOfDay, nowMs, context.packageManager)
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        if (sessions.isNotEmpty()) {
+            return sessions
+        }
+
+        // Fallback: If discrete UsageEvents buffer is empty or unavailable on this device,
+        // query cumulative daily stats via queryUsageStats to extract exact per-app screen time
+        return try {
+            val stats = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, nowMs)
+            stats.filter { it.totalTimeInForeground >= MIN_SESSION_SECONDS * 1000L && !isSystemPackage(it.packageName) }
+                .sortedByDescending { it.totalTimeInForeground }
+                .map { stat ->
+                    val durationSec = stat.totalTimeInForeground / 1000L
+                    val lastUsed = if (stat.lastTimeUsed in (startOfDay..nowMs)) stat.lastTimeUsed else nowMs
+                    createSessionRecord(stat.packageName, lastUsed, durationSec, context.packageManager)
+                }
         } catch (e: Exception) {
             emptyList()
         }

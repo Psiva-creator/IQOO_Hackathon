@@ -947,15 +947,23 @@
 
             <!-- User Actual Usage Management Bar -->
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 170px; padding: 9px 12px; font-size: 12px; font-weight: 800; border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);" onclick="grantAccessToAllAppsAtOnce()">
-                    ⚡ Grant Access to All Apps
+                <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 170px; padding: 10px 12px; font-size: 12px; font-weight: 800; border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);" onclick="openExactUsageModal()">
+                    📝 Enter Today's Exact Screen Time
                 </button>
-                <button class="btn btn-secondary" style="flex: 1; min-width: 130px; padding: 9px 12px; font-size: 12px;" onclick="openCustomUsageModal()">
-                    ➕ Add Custom App
+                <button class="btn btn-secondary" style="flex: 1; min-width: 120px; padding: 10px 12px; font-size: 12px;" onclick="syncWithOfficeKitBridge()">
+                    🔄 Sync Bridge API
                 </button>
-                <button class="btn btn-secondary" style="width: auto; padding: 9px 12px; font-size: 12px;" onclick="resetToSampleUsage()" title="Reset to default data">
-                    🔄 Reset
+                <button class="btn btn-secondary" style="width: auto; padding: 10px 12px; font-size: 12px;" onclick="openCustomUsageModal()" title="Add a single app">
+                    ➕ Add App
                 </button>
+                <button class="btn btn-secondary" style="width: auto; padding: 10px 12px; font-size: 12px; color: #ef4444;" onclick="clearAllUsage()" title="Clear all recorded entries">
+                    🗑️ Clear
+                </button>
+            </div>
+
+            <!-- Transparency / Security Info Note -->
+            <div style="background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; padding: 8px 10px; border-radius: 6px; font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+                <span>🔒 <strong>Your Exact Screen Time:</strong> Web browsers cannot automatically read Android system usage stats. Enter your exact minutes from your phone's Digital Wellbeing or click <strong>✏️</strong> on any app below to edit.</span>
             </div>
 
             <!-- Total Today Usage Card -->
@@ -1161,21 +1169,97 @@
                 <span style="color: #f1f5f9;"><strong>100% On-Device:</strong> Telemetry stays strictly on your phone.</span>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
-                <span>⏱️</span>
-                <span style="color: #f1f5f9;"><strong>Live Clock Sync:</strong> Exactly synchronizes with your phone's real-time clock.</span>
+                <span>📱</span>
+                <span style="color: #f1f5f9;"><strong>Exact Screen Time:</strong> Input your actual app minutes from Digital Wellbeing or sync with Member C's Office Kit Bridge.</span>
             </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 14px; font-weight: 800; padding: 14px; border: none; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);" onclick="grantStartupPermission()">
-                ⚡ Grant Permission & Sync Phone Timings
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+            <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 14px; font-weight: 800; padding: 13px; border: none; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);" onclick="openExactUsageModalFromStartup()">
+                📝 Enter Today's Exact Screen Time
+            </button>
+            <button class="btn btn-secondary" style="padding: 10px; font-size: 12px;" onclick="syncBridgeFromStartup()">
+                🔄 Auto-Sync from Office Kit Bridge (Member C)
             </button>
             <div style="display: flex; gap: 8px;">
-                <button class="btn btn-secondary" style="flex: 1; padding: 10px; font-size: 12px;" onclick="handleGrantPermissionClick()">
-                    ⚙️ Open Phone Settings
+                <button class="btn btn-secondary" style="flex: 1; padding: 9px; font-size: 11px;" onclick="loadSampleFromStartup()">
+                    ⚡ Quick Sample Day
                 </button>
-                <button class="btn btn-secondary" style="width: auto; padding: 10px 14px; font-size: 12px;" onclick="closeStartupModal()">
+                <button class="btn btn-secondary" style="flex: 1; padding: 9px; font-size: 11px;" onclick="handleGrantPermissionClick()">
+                    ⚙️ Phone Settings
+                </button>
+                <button class="btn btn-secondary" style="width: auto; padding: 9px 12px; font-size: 11px;" onclick="closeStartupModal()">
                     Skip
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: EXACT DAILY SCREEN TIME ENTRY & SYNC -->
+<div id="exactUsageModal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-height: 88vh; overflow-y: auto; border: 2px solid #10b981; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), 0 0 30px rgba(16, 185, 129, 0.2);">
+        <div class="modal-header">
+            <div>
+                <span class="modal-title" style="color: #34d399;">📱 Today's Exact Screen Time</span>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Input your real minutes used today</div>
+            </div>
+            <button class="close-btn" onclick="closeExactUsageModal()">✕</button>
+        </div>
+
+        <!-- Live Total Banner -->
+        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 95, 70, 0.25)); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 12px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; color: #6ee7b7; font-weight: 700;">Live Calculated Screen Time</div>
+                    <div style="font-size: 24px; font-weight: 800; color: #fff;" id="modalLiveTotalTime">0h 0m</div>
+                </div>
+                <div style="text-align: right; font-size: 11px; color: #cbd5e1;">
+                    <span id="modalActiveAppCount" style="font-weight: 800; color: #34d399;">0</span> apps active
+                </div>
+            </div>
+        </div>
+
+        <p style="font-size: 11px; color: #94a3b8; margin-bottom: 12px; line-height: 1.4;">
+            Open your phone's <strong>Settings &gt; Digital Wellbeing</strong> and enter the exact minutes spent on each app today. Only apps with minutes &gt; 0 will be added.
+        </p>
+
+        <!-- Common Apps Inputs List -->
+        <div id="exactAppInputsContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+            <!-- Rendered dynamically by renderExactModalInputs() -->
+        </div>
+
+        <!-- Add Custom App Row in Modal -->
+        <div style="background: #111827; border: 1px dashed #334155; border-radius: 10px; padding: 10px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px;">➕ Add Another App Used Today:</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <input type="text" id="modalCustomAppName" class="input-text" placeholder="App Name (e.g. Duolingo)" style="flex: 2; min-width: 110px; font-size: 12px; padding: 8px;">
+                <select id="modalCustomAppCat" class="select-box" style="flex: 2; min-width: 100px; font-size: 12px; padding: 8px;">
+                    <option value="Productivity">Productivity</option>
+                    <option value="Communication">Communication</option>
+                    <option value="Social">Social</option>
+                    <option value="Entertainment">Entertainment</option>
+                    <option value="Utility">Utility</option>
+                </select>
+                <input type="number" id="modalCustomAppMins" class="input-text" placeholder="Mins" min="1" max="600" style="width: 65px; font-size: 12px; padding: 8px;">
+                <button type="button" class="btn" style="width: auto; padding: 8px 12px; font-size: 12px; background: #38bdf8; color: #000; font-weight: 700;" onclick="addAppToExactList()">Add</button>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 13px; font-weight: 800; padding: 12px; border: none; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);" onclick="saveExactScreenTimeFromModal()">
+                💾 Save &amp; Apply My Exact Screen Time
+            </button>
+            <button class="btn btn-secondary" style="padding: 10px; font-size: 12px;" onclick="syncWithOfficeKitBridge()">
+                🔄 Auto-Sync from Office Kit Bridge (Member C)
+            </button>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 11px;" onclick="fillRealisticSamplePreset()">
+                    ⚡ Fill 3h Sample Day
+                </button>
+                <button class="btn btn-secondary" style="width: auto; padding: 8px 14px; font-size: 11px;" onclick="closeExactUsageModal()">
+                    Cancel
                 </button>
             </div>
         </div>
@@ -1209,12 +1293,12 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 18px;">
-            <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 800; padding: 11px;" onclick="closePermissionModal(); grantAccessToAllAppsAtOnce();">
-                ⚡ Grant Full Access to All Apps at Once
+            <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-weight: 800; padding: 11px;" onclick="closePermissionModal(); openExactUsageModal();">
+                📝 Enter Today's Exact Screen Time
             </button>
             <div style="display: flex; gap: 8px;">
-                <button class="btn btn-secondary" style="flex: 1;" onclick="closePermissionModal(); openCustomUsageModal();">
-                    ✏️ Enter My Real Apps
+                <button class="btn btn-secondary" style="flex: 1;" onclick="closePermissionModal(); syncWithOfficeKitBridge();">
+                    🔄 Sync Bridge API
                 </button>
                 <button class="btn btn-secondary" style="width: auto; padding: 8px 14px;" onclick="confirmSimulatedPermission()">
                     ✓ Continue
@@ -1704,9 +1788,41 @@
                 </div>
                 <span class="timeline-device-badge ${item.device.toLowerCase()}">${item.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</span>
                 <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">${item.minutes}m</span>
+                <button style="background: none; border: none; color: #38bdf8; font-size: 13px; cursor: pointer; padding: 2px 4px;" onclick="quickEditItemDuration(${idx})" title="Edit exact minutes">✏️</button>
                 <button style="background: none; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 2px 4px;" onclick="deleteUsageItem(${idx})" title="Delete entry">✕</button>
             </div>
         `).join('');
+    }
+
+    function quickEditItemDuration(idx) {
+        const item = usageTimeline[idx];
+        if (!item) return;
+        const input = prompt(`Enter exact minutes used today for ${item.app}:`, item.minutes);
+        if (input !== null) {
+            const val = parseInt(input);
+            if (!isNaN(val) && val > 0) {
+                item.minutes = val;
+                try { 
+                    localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline)); 
+                    localStorage.setItem('iqoo_exact_usage_logged', 'true');
+                } catch(e) {}
+                recalculateAndRenderUsage();
+                showToastNotification(`Updated ${item.app} to ${val}m`);
+            } else if (val === 0) {
+                deleteUsageItem(idx);
+            }
+        }
+    }
+
+    function clearAllUsage() {
+        if (confirm("Clear all recorded screen time data for today? You can re-enter your exact times anytime.")) {
+            usageTimeline = [];
+            try { 
+                localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline)); 
+            } catch(e) {}
+            recalculateAndRenderUsage();
+            showToastNotification("Screen time data cleared.");
+        }
     }
 
     function deleteUsageItem(idx) {
@@ -1808,9 +1924,31 @@
         sessionStorage.setItem('iqoo_perm_dismissed', 'true');
     }
 
-    function grantStartupPermission() {
+    function openExactUsageModalFromStartup() {
         closeStartupModal();
-        grantAccessToAllAppsAtOnce();
+        openExactUsageModal();
+    }
+
+    async function syncBridgeFromStartup() {
+        closeStartupModal();
+        const ok = await syncWithOfficeKitBridge();
+        if (ok) {
+            showScreen('usage');
+        } else {
+            openExactUsageModal();
+        }
+    }
+
+    function loadSampleFromStartup() {
+        closeStartupModal();
+        usageTimeline = generatePhoneCalibratedUsage();
+        try {
+            localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline));
+            localStorage.setItem('iqoo_perm_granted', 'true');
+        } catch(e) {}
+        recalculateAndRenderUsage();
+        showToastNotification("Loaded sample usage routine");
+        showScreen('usage');
     }
 
     function grantAccessToAllAppsAtOnce() {
@@ -1818,35 +1956,269 @@
         closeStartupModal();
         sessionStorage.setItem('iqoo_perm_dismissed', 'true');
         sessionStorage.setItem('iqoo_perm_session', 'true');
-        const banner = document.getElementById('permBanner');
-        if (banner) {
-            banner.style.borderLeftColor = '#10b981';
-            banner.style.background = 'rgba(16, 185, 129, 0.15)';
-            banner.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 24px;">⚡</span>
-                    <div>
-                        <div style="font-size: 13px; font-weight: 800; color: #34d399;">Full Access Granted to All Apps!</div>
-                        <div style="font-size: 11px; color: #cbd5e1;">All 10 apps synchronized with phone clock (${getExactPhoneClockTime(0)}).</div>
-                    </div>
-                </div>
-            `;
-            setTimeout(() => banner.classList.add('hidden'), 2500);
+        openExactUsageModal();
+    }
+
+    // ==========================================
+    // EXACT SCREEN TIME LOGGING & SYNC ENGINE
+    // ==========================================
+    const DEFAULT_POPULAR_APPS = [
+        { name: "WhatsApp", category: "Communication", device: "PHONE", icon: "💬" },
+        { name: "YouTube", category: "Entertainment", device: "PHONE", icon: "🎬" },
+        { name: "Instagram", category: "Social", device: "PHONE", icon: "📸" },
+        { name: "Google Chrome", category: "Productivity", device: "PHONE", icon: "🌐" },
+        { name: "Gmail", category: "Communication", device: "PHONE", icon: "✉️" },
+        { name: "VS Code / IDE", category: "Productivity", device: "LAPTOP", icon: "💻" },
+        { name: "Slack / Teams", category: "Communication", device: "LAPTOP", icon: "💼" },
+        { name: "Spotify", category: "Entertainment", device: "PHONE", icon: "🎵" },
+        { name: "Twitter / X", category: "Social", device: "PHONE", icon: "🐦" },
+        { name: "Telegram", category: "Communication", device: "PHONE", icon: "✈️" }
+    ];
+
+    function openExactUsageModal() {
+        renderExactModalInputs();
+        updateModalLiveTotal();
+        const modal = document.getElementById('exactUsageModal');
+        if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeExactUsageModal() {
+        const modal = document.getElementById('exactUsageModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function renderExactModalInputs() {
+        const container = document.getElementById('exactAppInputsContainer');
+        if (!container) return;
+
+        const appMap = new Map();
+        DEFAULT_POPULAR_APPS.forEach(a => {
+            appMap.set(a.name, { ...a, minutes: 0 });
+        });
+
+        // Overlay existing recorded usage if user already has entries
+        if (Array.isArray(usageTimeline)) {
+            usageTimeline.forEach(item => {
+                if (appMap.has(item.app)) {
+                    appMap.get(item.app).minutes = item.minutes;
+                } else {
+                    appMap.set(item.app, {
+                        name: item.app,
+                        category: item.category || 'Productivity',
+                        device: item.device || 'PHONE',
+                        icon: "📱",
+                        minutes: item.minutes
+                    });
+                }
+            });
         }
 
-        // Calibrate real-world multi-app session timestamps dynamically to current phone clock
-        usageTimeline = generatePhoneCalibratedUsage();
-        taskDatabase = generateCalibratedTaskHistory();
+        const apps = Array.from(appMap.values());
+        container.innerHTML = apps.map(app => `
+            <div class="exact-app-row" style="display: flex; align-items: center; justify-content: space-between; background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 12px; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                    <span style="font-size: 16px;">${app.icon || '📱'}</span>
+                    <div style="min-width: 0;">
+                        <div style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${app.name}</div>
+                        <div style="font-size: 10px; color: #94a3b8;">${app.category} • ${app.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="number" class="input-text exact-min-input" 
+                           data-app="${app.name}" 
+                           data-category="${app.category}" 
+                           data-device="${app.device}" 
+                           value="${app.minutes > 0 ? app.minutes : ''}" 
+                           placeholder="0" min="0" max="1440" 
+                           style="width: 68px; padding: 6px 8px; text-align: right; font-weight: 700; font-size: 13px; color: #38bdf8;" 
+                           oninput="updateModalLiveTotal()">
+                    <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">min</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function updateModalLiveTotal() {
+        const inputs = document.querySelectorAll('.exact-min-input');
+        let totalMins = 0;
+        let count = 0;
+        inputs.forEach(inp => {
+            const m = parseInt(inp.value) || 0;
+            if (m > 0) {
+                totalMins += m;
+                count++;
+            }
+        });
+        const hrs = Math.floor(totalMins / 60);
+        const mins = totalMins % 60;
+        const totalEl = document.getElementById('modalLiveTotalTime');
+        if (totalEl) totalEl.innerText = `${hrs}h ${mins}m (${totalMins} mins)`;
+        const countEl = document.getElementById('modalActiveAppCount');
+        if (countEl) countEl.innerText = count;
+    }
+
+    function addAppToExactList() {
+        const nameInput = document.getElementById('modalCustomAppName');
+        const catInput = document.getElementById('modalCustomAppCat');
+        const minsInput = document.getElementById('modalCustomAppMins');
+        const name = nameInput.value.trim();
+        const mins = parseInt(minsInput.value) || 0;
+        if (!name) {
+            alert("Please enter an application name");
+            return;
+        }
+
+        const container = document.getElementById('exactAppInputsContainer');
+        const newRow = document.createElement('div');
+        newRow.className = "exact-app-row";
+        newRow.style.cssText = "display: flex; align-items: center; justify-content: space-between; background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 12px; gap: 8px;";
+        newRow.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                <span style="font-size: 16px;">📱</span>
+                <div style="min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+                    <div style="font-size: 10px; color: #94a3b8;">${catInput.value} • 📱 Phone</div>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="number" class="input-text exact-min-input" 
+                       data-app="${name}" 
+                       data-category="${catInput.value}" 
+                       data-device="PHONE" 
+                       value="${mins > 0 ? mins : ''}" 
+                       placeholder="0" min="0" max="1440" 
+                       style="width: 68px; padding: 6px 8px; text-align: right; font-weight: 700; font-size: 13px; color: #38bdf8;" 
+                       oninput="updateModalLiveTotal()">
+                <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">min</span>
+            </div>
+        `;
+        container.prepend(newRow);
+        nameInput.value = '';
+        minsInput.value = '';
+        updateModalLiveTotal();
+    }
+
+    function saveExactScreenTimeFromModal() {
+        const inputs = document.querySelectorAll('.exact-min-input');
+        const items = [];
+        inputs.forEach(inp => {
+            const mins = parseInt(inp.value) || 0;
+            if (mins > 0) {
+                items.push({
+                    app: inp.dataset.app,
+                    category: inp.dataset.category || 'Productivity',
+                    minutes: mins,
+                    device: inp.dataset.device || 'PHONE'
+                });
+            }
+        });
+
+        if (items.length === 0) {
+            alert("Please enter minutes for at least one app, or click 'Fill 3h Sample Day'.");
+            return;
+        }
+
+        items.sort((a, b) => b.minutes - a.minutes);
+
+        usageTimeline = items.map((item, idx) => {
+            const offsetMins = (idx * 28) + 4;
+            return {
+                app: item.app,
+                category: item.category,
+                minutes: item.minutes,
+                device: item.device,
+                time: getExactPhoneClockTime(offsetMins),
+                relative: getRelativeTimeLabel(offsetMins),
+                offsetMins: offsetMins
+            };
+        });
 
         try {
             localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline));
             localStorage.setItem('iqoo_perm_granted', 'true');
+            localStorage.setItem('iqoo_exact_usage_logged', 'true');
         } catch(e) {}
 
+        closeExactUsageModal();
         recalculateAndRenderUsage();
-        renderHistoryList();
-        showToastNotification("Phone Timings Calibrated: " + getExactPhoneClockTime(0));
         showScreen('usage');
+        showToastNotification(`✅ Logged exact screen time: ${document.getElementById('totalUsageHours').innerText} across ${usageTimeline.length} apps!`);
+    }
+
+    function fillRealisticSamplePreset() {
+        const preset = {
+            "WhatsApp": 35,
+            "YouTube": 50,
+            "Instagram": 25,
+            "Google Chrome": 40,
+            "VS Code / IDE": 75,
+            "Gmail": 15,
+            "Spotify": 30
+        };
+        const inputs = document.querySelectorAll('.exact-min-input');
+        inputs.forEach(inp => {
+            if (preset[inp.dataset.app] !== undefined) {
+                inp.value = preset[inp.dataset.app];
+            } else {
+                inp.value = '';
+            }
+        });
+        updateModalLiveTotal();
+    }
+
+    async function syncWithOfficeKitBridge(customHost = null) {
+        showToastNotification("Contacting Office Kit Bridge...");
+        const targetUrl = customHost || "/api/sync";
+        let res = null;
+        try {
+            res = await fetch(targetUrl, { method: 'GET' });
+        } catch (e) {
+            try {
+                res = await fetch("http://localhost:8089/api/sync", { method: 'GET' });
+            } catch (err) {}
+        }
+
+        if (res && res.ok) {
+            try {
+                const data = await res.json();
+                if (data.appUsage && data.appUsage.timeline && data.appUsage.timeline.length > 0) {
+                    usageTimeline = data.appUsage.timeline.map((entry, idx) => {
+                        const mins = Math.max(1, Math.round((entry.durationSeconds || 60) / 60));
+                        return {
+                            app: entry.appName || entry.packageName || "App",
+                            category: entry.appCategory || "Productivity",
+                            minutes: mins,
+                            device: entry.device || "PHONE",
+                            time: entry.timeStr || getExactPhoneClockTime(idx * 20),
+                            relative: `${idx * 20}m ago`,
+                            offsetMins: idx * 20
+                        };
+                    });
+                    try {
+                        localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline));
+                        localStorage.setItem('iqoo_perm_granted', 'true');
+                        localStorage.setItem('iqoo_exact_usage_logged', 'true');
+                    } catch (e) {}
+                    closeExactUsageModal();
+                    recalculateAndRenderUsage();
+                    showScreen('usage');
+                    showToastNotification(`✅ Synced ${usageTimeline.length} real app sessions from Office Kit Bridge!`);
+                    return true;
+                } else {
+                    showToastNotification("Bridge online, but no active app sessions logged yet. Enter your screen time below.");
+                    openExactUsageModal();
+                    return false;
+                }
+            } catch (e) {
+                showToastNotification("Error parsing bridge response. Please enter screen time manually.");
+                openExactUsageModal();
+                return false;
+            }
+        } else {
+            showToastNotification("Bridge offline on port 8089. Please enter your screen time below.");
+            openExactUsageModal();
+            return false;
+        }
     }
 
     // ==========================================
