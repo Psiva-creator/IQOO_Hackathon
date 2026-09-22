@@ -140,11 +140,27 @@ fun ProductivityApp() {
     LaunchedEffect(taskType, isRunning) {
         if (tasks.isNotEmpty() || userModel != null) {
             val signal = contextCapture.captureCurrentSignal()
-            val engine = InsightEngine(tasks, listOf(signal))
+
+            // Feed real today's screen time into the engine
+            // getDailyAppUsageSummary() returns per-category seconds from actual phone usage
+            val dailyUsage = contextCapture.getDailyAppUsageSummary()
+            val totalScreenSec = contextCapture.getTotalScreenTimeSeconds()
+                .takeIf { it > 0L } ?: signal.screenOnDuration
+
+            // Build enriched context signals — one signal per category with real duration
+            val enrichedSignals = if (dailyUsage.isNotEmpty()) {
+                dailyUsage.map { (cat, secs) ->
+                    signal.copy(appCategory = cat, screenOnDuration = secs)
+                }
+            } else {
+                listOf(signal)
+            }
+
+            val engine = InsightEngine(tasks, enrichedSignals)
             engine.evaluateAndCoachAsync(
                 currentTaskType = taskType,
                 currentContext = signal.location,
-                screenDuration = signal.screenOnDuration,
+                screenDuration = totalScreenSec,
                 model = localModel
             ) { eval ->
                 activeCoachEval = eval

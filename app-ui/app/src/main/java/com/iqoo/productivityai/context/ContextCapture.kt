@@ -99,13 +99,14 @@ class ContextCapture(
     }
 
     /**
-     * Queries Android UsageStatsManager to aggregate daily foreground time across app categories.
-     * Enables the model to inspect daily screen time distribution (Productivity vs Social vs Entertainment).
+     * Returns today's exact foreground time per app-category (Productivity/Social/Entertainment/etc.)
+     * using the same API as PhoneUsageManager — queryAndAggregateUsageStats (API 28+).
+     * This is fed into InsightEngine for real distraction and fatigue scoring.
      */
     fun getDailyAppUsageSummary(): Map<String, Long> {
         if (context == null) return emptyMap()
         return try {
-            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: return emptyMap()
             val cal = java.util.Calendar.getInstance().apply {
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -115,19 +116,39 @@ class ContextCapture(
             }
             val startTime = cal.timeInMillis
             val endTime = System.currentTimeMillis()
-            val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-            val summary = mutableMapOf<String, Long>()
-            for (stat in stats) {
-                if (stat.totalTimeInForeground > 0) {
-                    val cat = classifyPackage(stat.packageName)
-                    val seconds = stat.totalTimeInForeground / 1000L
-                    summary[cat] = (summary[cat] ?: 0L) + seconds
+
+            // Use queryAndAggregateUsageStats (API 28+) — no UTC-bucket issues
+            val statsMap: Map<String, android.app.usage.UsageStats> =
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    usm.queryAndAggregateUsageStats(startTime, endTime)
+                } else {
+                    // Fallback: INTERVAL_BEST + manual group-sum
+                    val raw = usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startTime, endTime)
+                    raw?.groupBy { it.packageName }
+                        ?.mapValues { (_, list) ->
+                            list.maxByOrNull { it.totalTimeInForeground }!!
+                        } ?: emptyMap()
                 }
+
+            val summary = mutableMapOf<String, Long>()
+            for ((pkg, stat) in statsMap) {
+                if (stat.totalTimeInForeground <= 0L) continue
+                val cat = classifyPackage(pkg)
+                val seconds = stat.totalTimeInForeground / 1000L
+                summary[cat] = (summary[cat] ?: 0L) + seconds
             }
             summary
         } catch (_: Exception) {
             emptyMap()
         }
+    }
+
+    /**
+     * Returns total screen time today in seconds (all foreground apps combined).
+     * Used by InsightEngine for cognitive fatigue calculation.
+     */
+    fun getTotalScreenTimeSeconds(): Long {
+        return getDailyAppUsageSummary().values.sum()
     }
 }
 
