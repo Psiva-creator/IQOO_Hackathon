@@ -24,6 +24,46 @@ class OfficeKitBridgeHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(LATEST_INSIGHTS, indent=2).encode("utf-8"))
+        elif self.path in ("/ppt", "/presentation"):
+            ppt_paths = [
+                os.path.join(os.path.dirname(__file__), "..", "iqoo_hackathon_ppt.html"),
+                "/home/siva/.gemini/antigravity-cli/brain/dff3a8c0-5fa8-4849-893e-f329c286d7ca/iqoo_hackathon_ppt.html"
+            ]
+            ppt_content = None
+            for p in ppt_paths:
+                if os.path.exists(p):
+                    with open(p, "rb") as f:
+                        ppt_content = f.read()
+                    break
+            if ppt_content:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(ppt_content)
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Presentation file not found")
+        elif self.path in ("/app", "/simulator"):
+            app_paths = [
+                os.path.join(os.path.dirname(__file__), "interactive_app_simulator.html"),
+                os.path.join(os.path.dirname(__file__), "..", "data-sync", "interactive_app_simulator.html")
+            ]
+            app_content = None
+            for p in app_paths:
+                if os.path.exists(p):
+                    with open(p, "rb") as f:
+                        app_content = f.read()
+                    break
+            if app_content:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(app_content)
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"App simulator file not found")
         else:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")

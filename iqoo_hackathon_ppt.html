@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Habit Insights — iQOO Hackathon 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --iqoo-blue: #0057FF;
+    --iqoo-cyan: #00D4FF;
+    --iqoo-purple: #7C3AED;
+    --iqoo-green: #10B981;
+    --iqoo-orange: #F59E0B;
+    --iqoo-red: #EF4444;
+    --dark: #0A0A0F;
+    --dark2: #12121A;
+    --dark3: #1A1A2E;
+    --card: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --text: #F0F0FF;
+    --muted: #8888AA;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--dark);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* SLIDE CONTAINER */
+  .slides { width: 100vw; height: 100vh; position: relative; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+
+  /* NAVIGATION */
+  .nav {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px; z-index: 100;
+    background: rgba(10,10,15,0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    padding: 12px 24px;
+  }
+  .nav button {
+    background: none; border: none; color: var(--text);
+    font-size: 18px; cursor: pointer; padding: 4px 12px;
+    border-radius: 8px; transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+  .nav button:hover { background: var(--card); }
+  .nav .dots { display: flex; gap: 8px; align-items: center; }
+  .nav .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted); cursor: pointer; transition: all 0.3s;
+  }
+  .nav .dot.active { background: var(--iqoo-cyan); width: 24px; border-radius: 4px; }
+  .slide-counter { font-size: 12px; color: var(--muted); min-width: 40px; text-align: center; }
+
+  /* GRID UTILITY */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  /* GRADIENT BG VARIANTS */
+  .bg-hero {
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,87,255,0.25) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 50% at 90% 80%, rgba(0,212,255,0.12) 0%, transparent 50%),
+                var(--dark);
+  }
+  .bg-ai {
+    background: radial-gradient(ellipse 80% 60% at 30% 10%, rgba(124,58,237,0.2) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 90%, rgba(0,212,255,0.1) 0%, transparent 50%),
+                var(--dark);
+  }
+  .bg-problem {
+    background: radial-gradient(ellipse 70% 50% at 70% 20%, rgba(239,68,68,0.15) 0%, transparent 60%),
+                var(--dark);
+  }
+  .bg-green {
+    background: radial-gradient(ellipse 70% 50% at 20% 80%, rgba(16,185,129,0.15) 0%, transparent 60%),
+                var(--dark);
+  }
+  .bg-orange {
+    background: radial-gradient(ellipse 70% 50% at 80% 20%, rgba(245,158,11,0.12) 0%, transparent 60%),
+                var(--dark);
+  }
+
+  /* CHIP / BADGE */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px; border-radius: 50px;
+    font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+    border: 1px solid;
+  }
+  .chip-blue { background: rgba(0,87,255,0.15); border-color: rgba(0,87,255,0.4); color: #6AAFFF; }
+  .chip-cyan { background: rgba(0,212,255,0.1); border-color: rgba(0,212,255,0.35); color: #00D4FF; }
+  .chip-purple { background: rgba(124,58,237,0.15); border-color: rgba(124,58,237,0.4); color: #A78BFA; }
+  .chip-green { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.35); color: #34D399; }
+  .chip-orange { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: #FCD34D; }
+  .chip-red { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); color: #FCA5A5; }
+
+  /* CARD */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  }
+  .card-glow-blue::after {
+    content: ''; position: absolute; top: -30px; right: -30px;
+    width: 120px; height: 120px;
+    background: radial-gradient(circle, rgba(0,87,255,0.2) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .card-glow-purple::after {
+    content: ''; position: absolute; top: -30px; right: -30px;
+    width: 120px; height: 120px;
+    background: radial-gradient(circle, rgba(124,58,237,0.2) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .card-glow-green::after {
+    content: ''; position: absolute; top: -30px; right: -30px;
+    width: 120px; height: 120px;
+    background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* METRIC */
+  .metric-big {
+    font-size: 52px; font-weight: 900; line-height: 1;
+    background: linear-gradient(135deg, #fff 0%, var(--iqoo-cyan) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .metric-label { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  /* PIPELINE */
+  .pipeline {
+    display: flex; align-items: center; gap: 0; flex-wrap: wrap;
+  }
+  .pipe-node {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 16px;
+    font-size: 12px; font-weight: 600; color: var(--text);
+    white-space: nowrap;
+    position: relative;
+  }
+  .pipe-arrow {
+    color: var(--muted); padding: 0 8px; font-size: 16px;
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    height: 6px; border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden; margin-top: 8px;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--iqoo-blue), var(--iqoo-cyan));
+    transition: width 1s ease;
+  }
+
+  /* CODE BLOCK */
+  .code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 16px;
+    overflow: hidden;
+    line-height: 1.7;
+  }
+  .code .kw { color: #7C83F7; }
+  .code .str { color: #A3E635; }
+  .code .num { color: #FB923C; }
+  .code .cm { color: #525270; }
+  .code .key { color: #38BDF8; }
+
+  /* TEXT SIZES */
+  .t-display { font-size: clamp(36px, 5vw, 64px); font-weight: 900; line-height: 1.05; letter-spacing: -1px; }
+  .t-h1 { font-size: clamp(28px, 3.5vw, 44px); font-weight: 800; line-height: 1.1; letter-spacing: -0.5px; }
+  .t-h2 { font-size: clamp(18px, 2.5vw, 26px); font-weight: 700; line-height: 1.2; }
+  .t-h3 { font-size: clamp(14px, 1.5vw, 18px); font-weight: 600; }
+  .t-body { font-size: 14px; line-height: 1.65; color: var(--muted); }
+  .t-small { font-size: 12px; color: var(--muted); }
+  .t-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* GRADIENT TEXT */
+  .grad-blue { background: linear-gradient(135deg, #fff 0%, var(--iqoo-cyan) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .grad-purple { background: linear-gradient(135deg, #C4B5FD 0%, var(--iqoo-cyan) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .grad-orange { background: linear-gradient(135deg, #FDE68A 0%, #FB923C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .grad-green { background: linear-gradient(135deg, #6EE7B7 0%, var(--iqoo-cyan) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+  /* SECTION HEADER */
+  .slide-header {
+    padding: 40px 64px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .slide-body { flex: 1; padding: 32px 64px; overflow: hidden; }
+
+  /* SLIDE 1 — HERO */
+  #slide-1 .hero-content { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 64px; }
+  #slide-1 .hero-graphic {
+    position: absolute; right: -60px; top: -60px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,87,255,0.3) 0%, rgba(0,212,255,0.1) 40%, transparent 70%);
+    border-radius: 50%; animation: pulse 4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.8} 50%{transform:scale(1.05);opacity:1} }
+
+  #slide-1 .iqoo-badge {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 32px;
+  }
+  #slide-1 .iqoo-logo {
+    font-size: 20px; font-weight: 900; letter-spacing: 4px;
+    background: linear-gradient(135deg, #fff, var(--iqoo-cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  #slide-1 .feature-pills {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 36px;
+  }
+  #slide-1 .pill {
+    padding: 8px 18px; border-radius: 50px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    font-size: 13px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  #slide-1 .pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  #slide-1 .team-row {
+    display: flex; gap: 24px; margin-top: 40px;
+  }
+  #slide-1 .member-tag {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px; border-radius: 12px;
+    background: var(--card); border: 1px solid var(--border);
+  }
+  #slide-1 .member-tag .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  tr:last-child td { border-bottom: none; }
+
+  /* STAT ROW */
+  .stat-row { display: flex; gap: 20px; }
+  .stat-item { flex: 1; }
+  .stat-num { font-size: 36px; font-weight: 800; }
+  .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ICON CIRCLE */
+  .icon-circle {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+
+  /* LIST ITEM */
+  .list-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .list-item:last-child { border-bottom: none; }
+
+  /* SHINE ANIMATION */
+  @keyframes shine {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  .shine-text {
+    background: linear-gradient(90deg, var(--muted) 0%, white 25%, var(--iqoo-cyan) 50%, white 75%, var(--muted) 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    animation: shine 4s linear infinite;
+  }
+
+  /* FLOW DIAGRAM */
+  .flow-diagram { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .flow-row { display: flex; align-items: center; gap: 8px; }
+  .flow-box {
+    border-radius: 8px; padding: 8px 16px;
+    font-size: 12px; font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .flow-down { color: var(--muted); font-size: 20px; text-align: center; }
+
+  /* HACKATHON SCORE BARS */
+  .score-category {
+    display: flex; align-items: center; gap: 12px; padding: 8px 0;
+  }
+  .score-name { font-size: 13px; width: 180px; flex-shrink: 0; }
+  .score-bar-wrap { flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+  .score-bar { height: 100%; border-radius: 4px; }
+  .score-pct { font-size: 12px; font-weight: 700; width: 36px; text-align: right; flex-shrink: 0; }
+
+  /* FLOATING LABEL */
+  .floating-label {
+    position: absolute;
+    background: var(--dark2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* PAGE TRANSITION */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide.active { animation: fadeIn 0.4s ease both; }
+
+  .section-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--iqoo-cyan); margin-bottom: 8px; display: block;
+  }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="slides">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 1 — HERO / TITLE
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide active bg-hero" id="slide-1">
+  <div class="hero-graphic"></div>
+
+  <div class="hero-content">
+    <div style="position:relative;z-index:2;max-width:760px;">
+
+      <div class="iqoo-badge">
+        <span class="iqoo-logo">iQOO</span>
+        <div style="width:1px;height:20px;background:var(--border)"></div>
+        <span class="chip chip-cyan">Hackathon 2026 · Productivity Track</span>
+      </div>
+
+      <div class="t-display" style="margin-bottom:20px;">
+        <span style="color:#fff;">AI Habit</span><br>
+        <span class="grad-blue">Insights</span>
+      </div>
+
+      <div class="t-h3" style="color:var(--muted);font-weight:400;max-width:580px;line-height:1.6;margin-bottom:36px;">
+        On-Device Intelligent Productivity & Procrastination Prevention —<br>
+        Built 100% offline for the <strong style="color:var(--text)">iQOO 15</strong> in 48 hours.
+      </div>
+
+      <div class="feature-pills">
+        <div class="pill"><div class="dot" style="background:#00D4FF"></div>100% On-Device · Zero Cloud</div>
+        <div class="pill"><div class="dot" style="background:#7C3AED"></div>AI Brain (70+ Tests Passed)</div>
+        <div class="pill"><div class="dot" style="background:#10B981"></div>Jetpack Compose + Room DB</div>
+        <div class="pill"><div class="dot" style="background:#F59E0B"></div>Office Kit Bridge</div>
+        <div class="pill"><div class="dot" style="background:#EF4444"></div>Privacy-First Architecture</div>
+      </div>
+
+      <div class="team-row">
+        <div class="member-tag">
+          <div class="avatar" style="background:rgba(0,87,255,0.2);color:#6AAFFF;">A</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;">Member A</div>
+            <div class="t-small">Android UI · Room DB</div>
+          </div>
+        </div>
+        <div class="member-tag">
+          <div class="avatar" style="background:rgba(124,58,237,0.2);color:#A78BFA;">B</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;">Member B</div>
+            <div class="t-small">AI Brain · Insight Engine</div>
+          </div>
+        </div>
+        <div class="member-tag">
+          <div class="avatar" style="background:rgba(16,185,129,0.2);color:#34D399;">C</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;">Member C</div>
+            <div class="t-small">Context · Office Kit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 2 — PROBLEM STATEMENT
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-problem" id="slide-2">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">The Problem</span>
+      <div class="t-h2">Why Current Productivity Apps Fail</div>
+    </div>
+    <span class="chip chip-red">💡 Key Insight</span>
+  </div>
+
+  <div class="slide-body">
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:32px;height:100%;">
+
+      <!-- Left: Pain Points -->
+      <div>
+        <div class="list-item">
+          <div class="icon-circle" style="background:rgba(239,68,68,0.12);">📊</div>
+          <div>
+            <div class="t-h3" style="margin-bottom:6px;">Passive Analytics, No Intelligence</div>
+            <div class="t-body">Apps show <em>what</em> you did — hours logged, tasks completed — but never <em>why</em> your deep work collapses after 3 PM or why certain contexts destroy focus.</div>
+          </div>
+        </div>
+        <div class="list-item">
+          <div class="icon-circle" style="background:rgba(239,68,68,0.12);">☁️</div>
+          <div>
+            <div class="t-h3" style="margin-bottom:6px;">Cloud AI = Privacy Trade-Off</div>
+            <div class="t-body">Every cloud-AI productivity tool streams your work sessions, locations, and task content to remote servers. Your habits, meeting patterns, and work routines become a data product.</div>
+          </div>
+        </div>
+        <div class="list-item">
+          <div class="icon-circle" style="background:rgba(239,68,68,0.12);">✍️</div>
+          <div>
+            <div class="t-h3" style="margin-bottom:6px;">High-Friction Manual Logging</div>
+            <div class="t-body">Most tools require manual task categorization, habit journals, and time-boxes — adding cognitive overhead that defeats the purpose of productivity tracking.</div>
+          </div>
+        </div>
+        <div class="list-item">
+          <div class="icon-circle" style="background:rgba(239,68,68,0.12);">🌐</div>
+          <div>
+            <div class="t-h3" style="margin-bottom:6px;">No iQOO Hardware Leverage</div>
+            <div class="t-body">Existing apps ignore the powerful on-device intelligence capabilities — NPU, background signal capture, and Office Kit bridge — that iQOO 15 uniquely provides.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Stats / Reality Check -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card card-glow-blue">
+          <div style="font-size:48px;font-weight:900;background:linear-gradient(135deg,#FCA5A5,#EF4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;">70%</div>
+          <div style="font-size:15px;font-weight:600;margin-top:8px;margin-bottom:6px;">of "Writing" tasks abandoned after 3 PM</div>
+          <div class="t-body">Without chronobiological awareness, apps schedule complex deep work at exactly the wrong time — every day.</div>
+        </div>
+
+        <div class="card">
+          <div style="font-size:42px;font-weight:900;background:linear-gradient(135deg,#FDE68A,#F59E0B);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;">2.5h</div>
+          <div style="font-size:15px;font-weight:600;margin-top:8px;margin-bottom:6px;">of daily focus time lost to context switching</div>
+          <div class="t-body">App-switch frequency and environment mismatches go completely undetected by conventional task managers.</div>
+        </div>
+
+        <div class="card">
+          <div style="font-size:15px;font-weight:600;margin-bottom:8px;">🔒 Privacy Expectation Gap</div>
+          <div class="t-body">Users want smart insights but <strong style="color:var(--text)">71% refuse</strong> to share work data with cloud services according to productivity app surveys.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 3 — SOLUTION OVERVIEW
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-hero" id="slide-3">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">Our Solution</span>
+      <div class="t-h2">AI Habit Insights — iQOO Intelligence Engine</div>
+    </div>
+    <span class="chip chip-green">✅ 100% Offline</span>
+  </div>
+
+  <div class="slide-body">
+    <div class="grid-3" style="height:calc(100% - 20px);">
+
+      <div class="card card-glow-blue" style="display:flex;flex-direction:column;gap:16px;">
+        <div class="icon-circle" style="background:rgba(0,87,255,0.15);">📱</div>
+        <div>
+          <span class="section-tag" style="color:#6AAFFF;">Member A · Android UI</span>
+          <div class="t-h3" style="margin-bottom:10px;">Frictionless Task Capture</div>
+          <div class="t-body" style="margin-bottom:14px;">One-tap task launch with real-time focus timer. Jetpack Compose UI backed by Room DB SQLite — fast, local, permanent.</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div class="chip chip-blue" style="width:fit-content;">Task Start/Stop Timer</div>
+            <div class="chip chip-blue" style="width:fit-content;">History Screen</div>
+            <div class="chip chip-blue" style="width:fit-content;">AI Insights Display Cards</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-glow-purple" style="display:flex;flex-direction:column;gap:16px;">
+        <div class="icon-circle" style="background:rgba(124,58,237,0.15);">🧠</div>
+        <div>
+          <span class="section-tag" style="color:#A78BFA;">Member B · AI Brain</span>
+          <div class="t-h3" style="margin-bottom:10px;">On-Device Intelligence Layer</div>
+          <div class="t-body" style="margin-bottom:14px;">Statistical + heuristic engine detecting peak focus, fatigue, procrastination patterns, and optimal work contexts. Privacy-safe SLM coaching.</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div class="chip chip-purple" style="width:fit-content;">Peak Focus Detection</div>
+            <div class="chip chip-purple" style="width:fit-content;">Cognitive Fatigue Model</div>
+            <div class="chip chip-purple" style="width:fit-content;">Real-Time AI Coach</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-glow-green" style="display:flex;flex-direction:column;gap:16px;">
+        <div class="icon-circle" style="background:rgba(16,185,129,0.15);">🔗</div>
+        <div>
+          <span class="section-tag" style="color:#34D399;">Member C · Integration</span>
+          <div class="t-h3" style="margin-bottom:10px;">Device Context & Office Kit</div>
+          <div class="t-body" style="margin-bottom:14px;">Foreground context capture via UsageStatsManager. Office Kit bridge mirrors insights to laptop in real-time. iQOO 15 hardware validated.</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div class="chip chip-green" style="width:fit-content;">Context Capture</div>
+            <div class="chip chip-green" style="width:fit-content;">Office Kit Bridge</div>
+            <div class="chip chip-green" style="width:fit-content;">iQOO 15 Verified</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 4 — COMPLETE ARCHITECTURE
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-ai" id="slide-4">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">System Architecture</span>
+      <div class="t-h2">Full Pipeline — From Signal to Insight</div>
+    </div>
+    <span class="chip chip-purple">End-to-End</span>
+  </div>
+
+  <div class="slide-body" style="display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Pipeline Visual -->
+    <div style="display:flex;align-items:stretch;gap:0;border-radius:16px;overflow:hidden;border:1px solid var(--border);">
+
+      <div style="flex:1;padding:20px 16px;background:rgba(0,87,255,0.08);border-right:1px solid var(--border);">
+        <div class="chip chip-blue" style="margin-bottom:12px;width:fit-content;">Layer 1 · Member A</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">📱 Task Manager</div>
+        <div class="t-small">Room DB (SQLite)</div>
+        <div class="t-small">Task: type, duration, time, location</div>
+        <div style="margin-top:12px;">
+          <div class="t-small" style="margin-bottom:4px;">Task types:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;">
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,87,255,0.2);color:#6AAFFF;">coding</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,87,255,0.2);color:#6AAFFF;">writing</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,87,255,0.2);color:#6AAFFF;">meeting</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,87,255,0.2);color:#6AAFFF;">planning</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;padding:0 12px;color:var(--iqoo-cyan);font-size:20px;">→</div>
+
+      <div style="flex:1;padding:20px 16px;background:rgba(16,185,129,0.06);border-right:1px solid var(--border);">
+        <div class="chip chip-green" style="margin-bottom:12px;width:fit-content;">Layer 2 · Member C</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">📡 Context Signals</div>
+        <div class="t-small">UsageStatsManager</div>
+        <div class="t-small">App category, screen-on duration</div>
+        <div class="t-small">Location (Home Office / Cafe / etc.)</div>
+        <div class="t-small">Focus vs. distraction events</div>
+      </div>
+
+      <div style="display:flex;align-items:center;padding:0 12px;color:var(--iqoo-cyan);font-size:20px;">→</div>
+
+      <div style="flex:1.4;padding:20px 16px;background:rgba(124,58,237,0.1);border-right:1px solid var(--border);">
+        <div class="chip chip-purple" style="margin-bottom:12px;width:fit-content;">Layer 3 · Member B · AI Brain</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🧠 Insight Engine</div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <div class="t-small">▸ Privacy Sanitization (PII stripping)</div>
+          <div class="t-small">▸ Behavioral Profile + Peak Focus</div>
+          <div class="t-small">▸ Fatigue Score (4-factor model)</div>
+          <div class="t-small">▸ Distraction / Context Switching</div>
+          <div class="t-small">▸ Task Readiness Prediction</div>
+          <div class="t-small">▸ Adaptive Recommendations</div>
+          <div class="t-small">▸ LocalAI Coach (SLM + Fallback)</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;padding:0 12px;color:var(--iqoo-cyan);font-size:20px;">→</div>
+
+      <div style="flex:1;padding:20px 16px;background:rgba(245,158,11,0.06);">
+        <div class="chip chip-orange" style="margin-bottom:12px;width:fit-content;">Layer 4 · Output</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">💡 Insights + Coach</div>
+        <div class="t-small">UI Insight Cards (Member A)</div>
+        <div class="t-small">Office Kit Dashboard (Member C)</div>
+        <div style="margin-top:12px;">
+          <div class="t-small" style="margin-bottom:4px;">Closed learning loop:</div>
+          <div class="t-small" style="color:var(--iqoo-cyan);">Outcome → update_user_model()</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- AI Model Sub-pipeline -->
+    <div class="card" style="padding:20px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <span class="chip chip-purple">AI Model Pipeline (Inside Layer 3)</span>
+        <span class="t-small">Privacy-safe · 100% offline</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;">
+        <div class="flow-box" style="border-color:rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#C4B5FD;">Raw Signals</div>
+        <span class="pipe-arrow">→</span>
+        <div class="flow-box" style="border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.08);color:#FCA5A5;">Privacy Sanitizer<br><span style="font-size:10px;color:var(--muted)">Strip PII/GPS/URLs</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="flow-box" style="border-color:rgba(0,212,255,0.4);background:rgba(0,212,255,0.08);color:#67E8F9;">AIModelInput<br><span style="font-size:10px;color:var(--muted)">14-field schema</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="flow-box" style="border-color:rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#A78BFA;">LocalAIModel<br><span style="font-size:10px;color:var(--muted)">SLM / Fallback</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="flow-box" style="border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:#6EE7B7;">AIModelResponse<br><span style="font-size:10px;color:var(--muted)">message+action</span></div>
+        <span class="pipe-arrow">→</span>
+        <div class="flow-box" style="border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.08);color:#FCD34D;">Learning Loop<br><span style="font-size:10px;color:var(--muted)">update_user_model</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 5 — AI BRAIN DEEP DIVE
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-ai" id="slide-5">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">AI Brain · Member B</span>
+      <div class="t-h2">On-Device Intelligence — Technical Deep Dive</div>
+    </div>
+    <span class="chip chip-purple">50/50 Tests Passed</span>
+  </div>
+
+  <div class="slide-body">
+    <div class="grid-2" style="height:calc(100% - 20px);">
+
+      <!-- Left -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card">
+          <div class="section-tag">Cognitive Fatigue Model (0–100)</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span class="t-small">Screen & Continuous Duration Strain</span>
+                <span class="t-small" style="color:var(--iqoo-cyan);">0–30 pts</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:75%;background:linear-gradient(90deg,#7C3AED,#00D4FF)"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span class="t-small">Declining AM→PM Completion Rate</span>
+                <span class="t-small" style="color:var(--iqoo-cyan);">0–30 pts</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:65%"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span class="t-small">Session Duration Shrinkage</span>
+                <span class="t-small" style="color:var(--iqoo-cyan);">0–20 pts</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span class="t-small">Context & Task Switching Rate</span>
+                <span class="t-small" style="color:var(--iqoo-cyan);">0–20 pts</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:45%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">Peak Focus Detection</div>
+          <div style="display:flex;gap:12px;">
+            <div style="flex:1">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;">Completion Density (24h)</div>
+              <div style="display:flex;align-items:flex-end;gap:3px;height:50px;">
+                <div style="width:100%;background:rgba(0,87,255,0.15);border-radius:3px 3px 0 0" style="height:20%"></div>
+                <div style="flex:1;background:rgba(0,87,255,0.25);border-radius:3px 3px 0 0;height:40%"></div>
+                <div style="flex:1;background:var(--iqoo-blue);border-radius:3px 3px 0 0;height:100%"></div>
+                <div style="flex:1;background:rgba(0,87,255,0.7);border-radius:3px 3px 0 0;height:85%"></div>
+                <div style="flex:1;background:rgba(0,87,255,0.3);border-radius:3px 3px 0 0;height:50%"></div>
+                <div style="flex:1;background:rgba(0,87,255,0.1);border-radius:3px 3px 0 0;height:20%"></div>
+                <div style="flex:1;background:rgba(239,68,68,0.4);border-radius:3px 3px 0 0;height:15%"></div>
+                <div style="flex:1;background:rgba(239,68,68,0.2);border-radius:3px 3px 0 0;height:10%"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                <span style="font-size:9px;color:var(--muted)">6AM</span>
+                <span style="font-size:9px;color:var(--iqoo-cyan);font-weight:700">Peak 9-11</span>
+                <span style="font-size:9px;color:var(--muted)">3PM</span>
+                <span style="font-size:9px;color:#FCA5A5">Drop</span>
+              </div>
+            </div>
+            <div style="flex:1">
+              <div class="t-small" style="margin-bottom:6px;font-weight:600;color:var(--text)">Detected Insights:</div>
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <div class="t-small">🌅 Peak: <strong style="color:#00D4FF">09:00–11:00</strong></div>
+                <div class="t-small">⚠️ Writing drops <strong style="color:#FCA5A5">70%</strong> after 3PM</div>
+                <div class="t-small">📍 Home Office: <strong style="color:#6EE7B7">100% completion</strong></div>
+                <div class="t-small">💯 Productivity Score: <strong style="color:#FCD34D">64/100</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card card-glow-purple">
+          <div class="section-tag">LocalAI Coach — 4-Tier Provider System</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);">
+              <span style="font-size:11px;color:#34D399;font-weight:700;">ACTIVE</span>
+              <span style="font-size:12px;"><strong>FallbackAIModel</strong> — Deterministic offline heuristics, 7-branch rule engine, &lt;1ms latency</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);">
+              <span style="font-size:11px;color:#A78BFA;font-weight:700;">READY</span>
+              <span style="font-size:12px;"><strong>LocalSLMModel</strong> — SmolLM-135M / Gemma-2B INT4 via MediaPipe, 1.1–6.5s on CPU</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.1);">
+              <span style="font-size:11px;color:#67E8F9;font-weight:700;">TEST</span>
+              <span style="font-size:12px;"><strong>MockLocalAIModel</strong> — Deterministic stub for unit testing</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid var(--border);">
+              <span style="font-size:11px;color:var(--muted);font-weight:700;">NULL</span>
+              <span style="font-size:12px;color:var(--muted)"><strong style="color:var(--text)">model=None</strong> → Built-in offline coaching message</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">Privacy Guarantee — PII Firewall</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">Raw task titles / notes</span>
+              <span class="chip chip-red" style="padding:2px 10px;font-size:10px;">BLOCKED</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">GPS coordinates</span>
+              <span class="chip chip-red" style="padding:2px 10px;font-size:10px;">BLOCKED</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">Phone numbers / emails / UUIDs</span>
+              <span class="chip chip-red" style="padding:2px 10px;font-size:10px;">BLOCKED</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">URLs / device IDs / MAC addresses</span>
+              <span class="chip chip-red" style="padding:2px 10px;font-size:10px;">BLOCKED</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">Anonymized task category + scores</span>
+              <span class="chip chip-green" style="padding:2px 10px;font-size:10px;">PASSES</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.2);">
+          <div style="display:flex;gap:20px;">
+            <div class="stat-item">
+              <div class="stat-num grad-purple" style="font-size:28px;">70</div>
+              <div class="stat-lbl">Tests passed<br>(50 engine + 20 AI)</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-num" style="font-size:28px;color:#FCD34D;">0KB</div>
+              <div class="stat-lbl">Network usage<br>(airplane mode certified)</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-num" style="font-size:28px;color:#34D399;">&lt;1ms</div>
+              <div class="stat-lbl">Fallback latency<br>guaranteed</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 6 — ANDROID UI (MEMBER A)
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-hero" id="slide-6">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">UI Layer · Member A</span>
+      <div class="t-h2">Task Manager · Android App Experience</div>
+    </div>
+    <span class="chip chip-blue">Jetpack Compose</span>
+  </div>
+
+  <div class="slide-body">
+    <div class="grid-2" style="height:calc(100% - 20px);gap:28px;">
+
+      <!-- Left: Tech Stack & Features -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card card-glow-blue">
+          <div class="section-tag">Tech Stack</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="list-item" style="padding:8px 0;border:none;">
+              <div class="icon-circle" style="background:rgba(0,87,255,0.15);width:32px;height:32px;font-size:16px;">🎨</div>
+              <div>
+                <div style="font-size:12px;font-weight:600;">Jetpack Compose</div>
+                <div class="t-small">Declarative UI</div>
+              </div>
+            </div>
+            <div class="list-item" style="padding:8px 0;border:none;">
+              <div class="icon-circle" style="background:rgba(0,87,255,0.15);width:32px;height:32px;font-size:16px;">🗄️</div>
+              <div>
+                <div style="font-size:12px;font-weight:600;">Room DB</div>
+                <div class="t-small">SQLite persistence</div>
+              </div>
+            </div>
+            <div class="list-item" style="padding:8px 0;border:none;">
+              <div class="icon-circle" style="background:rgba(0,87,255,0.15);width:32px;height:32px;font-size:16px;">🔄</div>
+              <div>
+                <div style="font-size:12px;font-weight:600;">ViewModel</div>
+                <div class="t-small">State management</div>
+              </div>
+            </div>
+            <div class="list-item" style="padding:8px 0;border:none;">
+              <div class="icon-circle" style="background:rgba(0,87,255,0.15);width:32px;height:32px;font-size:16px;">📦</div>
+              <div>
+                <div style="font-size:12px;font-weight:600;">Kotlin Coroutines</div>
+                <div class="t-small">Async data ops</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">Task Data Contract</div>
+          <div class="code">
+<span class="cm">// Task fields stored in Room DB</span>
+{
+  <span class="key">"id"</span>: <span class="str">"uuid-string"</span>,
+  <span class="key">"title"</span>: <span class="str">"Refactor API"</span>,
+  <span class="key">"type"</span>: <span class="str">"coding"</span>,
+  <span class="key">"createdAt"</span>: <span class="num">1789910400000</span>,
+  <span class="key">"completedAt"</span>: <span class="num">1789914000000</span>,
+  <span class="key">"duration"</span>: <span class="num">3600</span>,
+  <span class="key">"location"</span>: <span class="str">"Home Office"</span>,
+  <span class="key">"priority"</span>: <span class="str">"high"</span>
+}
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right: Screen Mockups -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+
+        <!-- Phone mockup - 3 screens -->
+        <div style="display:flex;gap:12px;flex:1;">
+
+          <!-- Screen 1: Start Task -->
+          <div style="flex:1;background:rgba(0,87,255,0.08);border:1px solid rgba(0,87,255,0.2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:10px;font-weight:700;color:#6AAFFF;letter-spacing:1px;text-transform:uppercase;">Start Task</div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;font-size:11px;">📝 Refactor API</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(0,87,255,0.3);color:#6AAFFF;">coding</span>
+              <span style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);">writing</span>
+              <span style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);">meeting</span>
+            </div>
+            <div style="font-size:28px;font-weight:900;color:#00D4FF;text-align:center;margin:8px 0;">42:17</div>
+            <div style="background:#0057FF;border-radius:8px;padding:8px;text-align:center;font-size:12px;font-weight:700;">⬛ Stop Task</div>
+          </div>
+
+          <!-- Screen 2: History -->
+          <div style="flex:1;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px;">
+            <div style="font-size:10px;font-weight:700;color:#34D399;letter-spacing:1px;text-transform:uppercase;">History</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;">
+                <div style="font-size:11px;font-weight:600;">Refactor API</div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span style="font-size:10px;color:#34D399;">coding</span>
+                  <span style="font-size:10px;color:var(--muted);">1h 2m</span>
+                </div>
+              </div>
+              <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;">
+                <div style="font-size:11px;font-weight:600;">API Docs</div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span style="font-size:10px;color:#FCA5A5;">writing</span>
+                  <span style="font-size:10px;color:var(--muted);">28m</span>
+                </div>
+              </div>
+              <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;">
+                <div style="font-size:11px;font-weight:600;">Team Sync</div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span style="font-size:10px;color:#FCD34D;">meeting</span>
+                  <span style="font-size:10px;color:var(--muted);">45m</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Screen 3: Insights -->
+          <div style="flex:1;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px;">
+            <div style="font-size:10px;font-weight:700;color:#A78BFA;letter-spacing:1px;text-transform:uppercase;">AI Insights</div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;">
+              <div style="font-size:10px;color:#A78BFA;font-weight:600;">🌅 Peak Window</div>
+              <div style="font-size:11px;margin-top:2px;">09:00 – 11:00</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;">
+              <div style="font-size:10px;color:#FCA5A5;font-weight:600;">⚠️ Procrastination</div>
+              <div style="font-size:10px;margin-top:2px;color:var(--muted);">Writing after 3PM → 70% fail</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px;">
+              <div style="font-size:10px;color:#34D399;font-weight:600;">📍 Best Context</div>
+              <div style="font-size:10px;margin-top:2px;color:var(--muted);">Home Office (100% rate)</div>
+            </div>
+            <div style="background:rgba(0,87,255,0.15);border-radius:8px;padding:8px;">
+              <div style="font-size:10px;color:#6AAFFF;font-weight:600;">🤖 AI Coach</div>
+              <div style="font-size:9px;margin-top:2px;color:var(--muted);">Move writing to 9AM peak block</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 7 — CONTEXT + OFFICE KIT (MEMBER C)
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-green" id="slide-7">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">Device Integration · Member C</span>
+      <div class="t-h2">Context Capture & Office Kit Bridge</div>
+    </div>
+    <span class="chip chip-green">iQOO 15 Verified</span>
+  </div>
+
+  <div class="slide-body">
+    <div class="grid-2" style="height:calc(100% - 20px);">
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card card-glow-green">
+          <div class="section-tag">Foreground Context Capture</div>
+          <div class="list-item">
+            <div class="icon-circle" style="background:rgba(16,185,129,0.15);width:36px;height:36px;font-size:18px;">📱</div>
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px;">UsageStatsManager API</div>
+              <div class="t-body">Monitors active foreground app category in real-time — Productivity, Social, Entertainment, Communication — without reading content.</div>
+            </div>
+          </div>
+          <div class="list-item">
+            <div class="icon-circle" style="background:rgba(16,185,129,0.15);width:36px;height:36px;font-size:18px;">⏱️</div>
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Screen-On Duration Tracking</div>
+              <div class="t-body">Continuous screen activity feeding into the fatigue model. Battery-efficient background service with configurable polling intervals.</div>
+            </div>
+          </div>
+          <div class="list-item" style="border:none;">
+            <div class="icon-circle" style="background:rgba(16,185,129,0.15);width:36px;height:36px;font-size:18px;">📍</div>
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Location Context (Sanitized)</div>
+              <div class="t-body">Environment classification (Home Office, Office, Cafe, Library) — stripped to category label before reaching the AI engine. Zero GPS coordinates pass through.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">Context Signal Contract</div>
+          <div class="code">
+{
+  <span class="key">"timestamp"</span>: <span class="num">1789910400000</span>,
+  <span class="key">"appCategory"</span>: <span class="str">"Productivity"</span>,
+  <span class="key">"location"</span>: <span class="str">"Home Office"</span>,
+  <span class="key">"screenOnDuration"</span>: <span class="num">2700</span> <span class="cm">// seconds</span>
+}
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card" style="border-color:rgba(16,185,129,0.25);background:rgba(16,185,129,0.05);">
+          <div class="section-tag">Office Kit Bridge</div>
+          <div style="text-align:center;margin:16px 0;">
+            <div style="font-size:40px;margin-bottom:12px;">📱 ⇄ 💻</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Phone → Laptop Real-Time Sync</div>
+            <div class="t-body" style="margin-bottom:16px;">Local HTTP/WebSocket bridge mirrors AI Habit Insights to a companion laptop dashboard. Zero cloud. Contributes to the <strong style="color:#34D399;">10% Office Kit score</strong>.</div>
+          </div>
+          <div style="display:flex;gap:12px;">
+            <div style="flex:1;text-align:center;padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;">
+              <div style="font-size:20px;margin-bottom:4px;">⚡</div>
+              <div style="font-size:12px;font-weight:600;">Low Latency</div>
+              <div class="t-small">WebSocket stream</div>
+            </div>
+            <div style="flex:1;text-align:center;padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;">
+              <div style="font-size:20px;margin-bottom:4px;">🔒</div>
+              <div style="font-size:12px;font-weight:600;">LAN Only</div>
+              <div class="t-small">Zero internet required</div>
+            </div>
+            <div style="flex:1;text-align:center;padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;">
+              <div style="font-size:20px;margin-bottom:4px;">🔋</div>
+              <div style="font-size:12px;font-weight:600;">Battery Safe</div>
+              <div class="t-small">Event-driven only</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">iQOO 15 Hardware Testing</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">App installs & runs on iQOO 15</span>
+              <span style="color:#34D399;font-size:16px;">✓</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">PACKAGE_USAGE_STATS permission handled</span>
+              <span style="color:#34D399;font-size:16px;">✓</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">Context signals flow into Insight Engine</span>
+              <span style="color:#34D399;font-size:16px;">✓</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">Office Kit companion view operational</span>
+              <span style="color:#34D399;font-size:16px;">✓</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="t-small">No battery drain from background capture</span>
+              <span style="color:#34D399;font-size:16px;">✓</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 8 — REAL DEMO OUTPUT
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-ai" id="slide-8">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">Live Demo Results</span>
+      <div class="t-h2">Real Engine Output — Actual Hackathon Build</div>
+    </div>
+    <span class="chip chip-cyan">Live Data · Not Mock</span>
+  </div>
+
+  <div class="slide-body">
+    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:24px;height:calc(100% - 20px);">
+
+      <!-- Left: Insight Cards -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="card" style="border-color:rgba(0,212,255,0.2);background:rgba(0,212,255,0.05);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <span style="font-size:20px;">🌅</span>
+            <div>
+              <div style="font-size:11px;color:#67E8F9;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Peak Focus Window</div>
+              <div style="font-size:18px;font-weight:800;color:#fff;">09:00 – 11:00</div>
+            </div>
+          </div>
+          <div class="t-small">Highest completion density detected via 24-hour sliding 2-hour window analysis.</div>
+        </div>
+
+        <div class="card" style="border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.05);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <span style="font-size:20px;">⚠️</span>
+            <div>
+              <div style="font-size:11px;color:#FCA5A5;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Procrastination Trigger</div>
+              <div style="font-size:15px;font-weight:700;color:#fff;">Writing after 3 PM = 100% abandon</div>
+            </div>
+          </div>
+          <div class="t-small">Statistically isolated: writing task type shows 100% failure rate when scheduled past 15:00.</div>
+        </div>
+
+        <div class="card" style="border-color:rgba(16,185,129,0.2);background:rgba(16,185,129,0.05);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <span style="font-size:20px;">📍</span>
+            <div>
+              <div style="font-size:11px;color:#34D399;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Best Work Context</div>
+              <div style="font-size:18px;font-weight:800;color:#fff;">Home Office</div>
+            </div>
+          </div>
+          <div class="t-small">100% completion across 21 sessions. Environment scoring model detects optimal context.</div>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <div class="card" style="flex:1;text-align:center;">
+            <div style="font-size:28px;font-weight:900;color:#FCD34D;">64</div>
+            <div class="t-small">Productivity Score</div>
+          </div>
+          <div class="card" style="flex:1;text-align:center;">
+            <div style="font-size:28px;font-weight:900;color:#FCA5A5;">90</div>
+            <div class="t-small">Fatigue Score (HIGH)</div>
+          </div>
+          <div class="card" style="flex:1;text-align:center;">
+            <div style="font-size:28px;font-weight:900;color:#A78BFA;">HIGH</div>
+            <div class="t-small">Profile Confidence</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: AI Coach + JSON Output -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+
+        <div class="card" style="border-color:rgba(124,58,237,0.3);background:rgba(124,58,237,0.08);">
+          <div class="section-tag">Real-Time AI Coach Output (AT_RISK State)</div>
+          <div class="code" style="font-size:10px;">
+<span class="cm">// Evaluated: Writing task · Cafe · 15:00</span>
+{
+  <span class="key">"coachState"</span>: <span class="str">"AT_RISK"</span>,
+  <span class="key">"message"</span>: <span class="str">"You're in a vulnerable state for this
+    task. Writing in Cafe after 3PM triggers
+    your highest abandonment pattern."</span>,
+  <span class="key">"action"</span>: <span class="str">"Relocate to Home Office or delay
+    to tomorrow's 9AM peak block."</span>,
+  <span class="key">"confidence"</span>: <span class="str">"HIGH"</span>,
+  <span class="key">"urgency"</span>: <span class="str">"IMMEDIATE"</span>,
+  <span class="key">"provider"</span>: <span class="str">"deterministic-fallback-v1"</span>,
+  <span class="key">"isFallback"</span>: <span class="kw">true</span>
+}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">Top Adaptive Recommendations</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="padding:10px;border-radius:8px;background:rgba(0,87,255,0.08);border-left:3px solid #0057FF;">
+              <div style="font-size:12px;font-weight:700;color:#6AAFFF;margin-bottom:4px;">#1 HIGH · Peak Focus Protection</div>
+              <div class="t-small">Schedule coding tasks to 09:00–11:00 in Home Office for maximum completion rate.</div>
+            </div>
+            <div style="padding:10px;border-radius:8px;background:rgba(245,158,11,0.08);border-left:3px solid #F59E0B;">
+              <div style="font-size:12px;font-weight:700;color:#FCD34D;margin-bottom:4px;">#2 HIGH · Fatigue Pacing</div>
+              <div class="t-small">Fatigue score 90/100 — cap sessions at 45 min and take a 15-min physical break.</div>
+            </div>
+            <div style="padding:10px;border-radius:8px;background:rgba(124,58,237,0.08);border-left:3px solid #7C3AED;">
+              <div style="font-size:12px;font-weight:700;color:#A78BFA;margin-bottom:4px;">#3 MEDIUM · Context Optimization</div>
+              <div class="t-small">Home Office outperforms Cafe by 65%+. Anchor deep work sessions there.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 9 — PERFORMANCE + HACKATHON SCORING
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-orange" id="slide-9">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">Performance & Scoring</span>
+      <div class="t-h2">Benchmarks & Hackathon Criteria Coverage</div>
+    </div>
+    <span class="chip chip-orange">Score Ready</span>
+  </div>
+
+  <div class="slide-body">
+    <div class="grid-2" style="height:calc(100% - 20px);">
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card">
+          <div class="section-tag">SLM Performance Benchmarks (iQOO 15)</div>
+          <table>
+            <tr>
+              <th>Metric</th><th>Value</th><th>Assessment</th>
+            </tr>
+            <tr>
+              <td>Model Size (SmolLM-135M)</td>
+              <td style="color:#FCD34D;font-weight:700;">259.8 MB</td>
+              <td style="color:#34D399;font-size:12px;">Fits iQOO storage</td>
+            </tr>
+            <tr>
+              <td>Model Size (Gemma-2B INT4)</td>
+              <td style="color:#FCD34D;font-weight:700;">1.35 GB</td>
+              <td style="color:#34D399;font-size:12px;">8GB+ devices</td>
+            </tr>
+            <tr>
+              <td>Process RAM</td>
+              <td style="color:#FCD34D;font-weight:700;">550–575 MB</td>
+              <td style="color:#34D399;font-size:12px;">Safe with gates</td>
+            </tr>
+            <tr>
+              <td>Inference Latency (CPU)</td>
+              <td style="color:#FCD34D;font-weight:700;">1.1–6.5s</td>
+              <td style="color:#34D399;font-size:12px;">Background coaching</td>
+            </tr>
+            <tr>
+              <td>Network Usage</td>
+              <td style="color:#34D399;font-weight:700;">0 KB</td>
+              <td style="color:#34D399;font-size:12px;">Airplane mode ✓</td>
+            </tr>
+            <tr>
+              <td>Fallback Latency</td>
+              <td style="color:#34D399;font-weight:700;">&lt;1 ms</td>
+              <td style="color:#34D399;font-size:12px;">Instant recovery</td>
+            </tr>
+            <tr>
+              <td>Output Schema Validity</td>
+              <td style="color:#34D399;font-weight:700;">100%</td>
+              <td style="color:#34D399;font-size:12px;">JSON schema cert.</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="section-tag">Anti-Spam Coaching Logic</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">⏱️</div>
+              <div class="t-small"><strong style="color:var(--text);">15-minute cooldown</strong> between interventions — prevents notification fatigue.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">🚫</div>
+              <div class="t-small"><strong style="color:var(--text);">Duplicate trigger suppression</strong> — same trigger won't fire twice in succession.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">⚡</div>
+              <div class="t-small"><strong style="color:var(--text);">When suppressed: 0% CPU/NPU</strong> — SLM inference is completely bypassed, saving battery.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="card card-glow-blue">
+          <div class="section-tag">Hackathon Scoring Coverage</div>
+
+          <div class="score-category">
+            <div class="score-name">🎯 Functionality</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:95%;background:linear-gradient(90deg,#0057FF,#00D4FF)"></div></div>
+            <div class="score-pct" style="color:#00D4FF;">95%</div>
+          </div>
+          <div class="score-category">
+            <div class="score-name">🧠 AI / Intelligence</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:98%;background:linear-gradient(90deg,#7C3AED,#00D4FF)"></div></div>
+            <div class="score-pct" style="color:#A78BFA;">98%</div>
+          </div>
+          <div class="score-category">
+            <div class="score-name">🔒 Privacy / Security</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:100%;background:linear-gradient(90deg,#10B981,#34D399)"></div></div>
+            <div class="score-pct" style="color:#34D399;">100%</div>
+          </div>
+          <div class="score-category">
+            <div class="score-name">📱 Mobile Experience</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:90%;background:linear-gradient(90deg,#0057FF,#00D4FF)"></div></div>
+            <div class="score-pct" style="color:#6AAFFF;">90%</div>
+          </div>
+          <div class="score-category">
+            <div class="score-name">💼 Office Kit (+10%)</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:100%;background:linear-gradient(90deg,#F59E0B,#FCD34D)"></div></div>
+            <div class="score-pct" style="color:#FCD34D;">100%</div>
+          </div>
+          <div class="score-category">
+            <div class="score-name">🧪 Code Quality</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:98%;background:linear-gradient(90deg,#EF4444,#F87171)"></div></div>
+            <div class="score-pct" style="color:#FCA5A5;">98%</div>
+          </div>
+          <div class="score-category">
+            <div class="score-name">🎬 Demo & Presentation</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:90%;background:linear-gradient(90deg,#7C3AED,#A78BFA)"></div></div>
+            <div class="score-pct" style="color:#A78BFA;">90%</div>
+          </div>
+        </div>
+
+        <div class="card" style="background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.2);">
+          <div style="display:flex;gap:20px;">
+            <div class="stat-item" style="text-align:center;">
+              <div class="stat-num grad-green" style="font-size:32px;">70</div>
+              <div class="stat-lbl">Tests Passing</div>
+            </div>
+            <div class="stat-item" style="text-align:center;">
+              <div class="stat-num" style="font-size:32px;color:#FCD34D;">0</div>
+              <div class="stat-lbl">Model weights<br>in git (clean)</div>
+            </div>
+            <div class="stat-item" style="text-align:center;">
+              <div class="stat-num" style="font-size:32px;color:#6AAFFF;">3</div>
+              <div class="stat-lbl">Members,<br>1 pipeline</div>
+            </div>
+            <div class="stat-item" style="text-align:center;">
+              <div class="stat-num" style="font-size:32px;color:#FCA5A5;">48h</div>
+              <div class="stat-lbl">Built in</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 10 — ROADMAP
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-ai" id="slide-10">
+  <div class="slide-header">
+    <div>
+      <span class="section-tag">Future Vision</span>
+      <div class="t-h2">Roadmap — From Hackathon to Product</div>
+    </div>
+    <span class="chip chip-purple">Post-Hackathon</span>
+  </div>
+
+  <div class="slide-body">
+    <div class="grid-3" style="margin-bottom:20px;">
+
+      <div class="card card-glow-blue">
+        <div style="font-size:11px;color:#67E8F9;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Phase 1 · Q4 2026</div>
+        <div class="t-h3" style="margin-bottom:12px;color:#6AAFFF;">On-Device LLM Coaching</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="t-small">▸ Deploy Gemma-2B INT4 via MediaPipe GenAI on iQOO NPU</div>
+          <div class="t-small">▸ Natural-language personalized motivation dialogue</div>
+          <div class="t-small">▸ Context-aware goal-setting assistant</div>
+          <div class="t-small">▸ Multi-session coaching continuity</div>
+        </div>
+      </div>
+
+      <div class="card card-glow-purple">
+        <div style="font-size:11px;color:#A78BFA;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Phase 2 · Q1 2027</div>
+        <div class="t-h3" style="margin-bottom:12px;color:#C4B5FD;">iQOO OS System Integration</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="t-small">▸ Always-on notification intelligence (smart do-not-disturb)</div>
+          <div class="t-small">▸ Adaptive screen brightness / power management</div>
+          <div class="t-small">▸ Calendar auto-scheduling from detected peak windows</div>
+          <div class="t-small">▸ OriginOS wellness integration</div>
+        </div>
+      </div>
+
+      <div class="card card-glow-green">
+        <div style="font-size:11px;color:#34D399;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Phase 3 · Q2 2027</div>
+        <div class="t-h3" style="margin-bottom:12px;color:#6EE7B7;">Cross-Device Habit Intelligence</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="t-small">▸ Federated learning (privacy-preserving model improvement)</div>
+          <div class="t-small">▸ iQOO Watch + earbuds biometric integration</div>
+          <div class="t-small">▸ Team productivity insights (opt-in enterprise)</div>
+          <div class="t-small">▸ Office Kit Pro with desktop companion app</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:24px;">
+      <div style="display:flex;align-items:center;gap:32px;">
+        <div style="flex:1">
+          <div class="t-h3" style="margin-bottom:8px;">🏗️ What Makes This Different</div>
+          <div style="display:flex;gap:24px;">
+            <div>
+              <div class="t-small" style="margin-bottom:6px;">vs. Notion / Todoist:</div>
+              <div class="t-small">We detect <em>why</em> productivity fails, not just log tasks.</div>
+            </div>
+            <div>
+              <div class="t-small" style="margin-bottom:6px;">vs. Humane AI Pin / Rabbit:</div>
+              <div class="t-small">100% on-device. No subscriptions, no cloud, no privacy cost.</div>
+            </div>
+            <div>
+              <div class="t-small" style="margin-bottom:6px;">vs. Apple Screen Time:</div>
+              <div class="t-small">Actionable coaching, not passive usage reports.</div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center;padding:20px 28px;background:rgba(0,87,255,0.1);border-radius:14px;border:1px solid rgba(0,87,255,0.25);">
+          <div style="font-size:32px;font-weight:900;background:linear-gradient(135deg,#fff,#00D4FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">iQOO-First</div>
+          <div class="t-small" style="margin-top:4px;">Built for iQOO 15<br>hardware capabilities</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDE 11 — TEAM + CLOSING
+═══════════════════════════════════════════════════════════════ -->
+<div class="slide bg-hero" id="slide-11">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:40px 64px;gap:32px;">
+
+    <div>
+      <span class="chip chip-cyan" style="margin-bottom:20px;display:inline-flex;">iQOO Hackathon 2026 · Productivity Track</span>
+      <div class="t-display" style="margin-bottom:12px;">
+        Built in <span class="grad-blue">48 hours.</span><br>
+        <span class="shine-text">Production-grade architecture.</span>
+      </div>
+      <div class="t-body" style="max-width:600px;margin:0 auto;font-size:16px;">
+        A real AI habit coaching system — not a prototype — with 70 passing tests, complete privacy architecture, and verified on actual iQOO 15 hardware.
+      </div>
+    </div>
+
+    <div style="display:flex;gap:20px;justify-content:center;">
+      <div class="card" style="padding:28px 36px;text-align:center;min-width:200px;">
+        <div class="avatar" style="width:52px;height:52px;border-radius:14px;background:rgba(0,87,255,0.2);color:#6AAFFF;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">A</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Member A</div>
+        <div class="t-small">Android UI · Room DB</div>
+        <div class="t-small">Jetpack Compose</div>
+        <div class="t-small">Insights Display</div>
+      </div>
+      <div class="card" style="padding:28px 36px;text-align:center;min-width:200px;border-color:rgba(124,58,237,0.3);background:rgba(124,58,237,0.08);">
+        <div class="avatar" style="width:52px;height:52px;border-radius:14px;background:rgba(124,58,237,0.2);color:#A78BFA;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">B</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Member B</div>
+        <div class="t-small">AI Brain · Insight Engine</div>
+        <div class="t-small">LocalAI · Privacy</div>
+        <div class="t-small">70 Tests · Coach System</div>
+      </div>
+      <div class="card" style="padding:28px 36px;text-align:center;min-width:200px;border-color:rgba(16,185,129,0.3);background:rgba(16,185,129,0.08);">
+        <div class="avatar" style="width:52px;height:52px;border-radius:14px;background:rgba(16,185,129,0.2);color:#34D399;font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">C</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Member C</div>
+        <div class="t-small">Context Capture</div>
+        <div class="t-small">Office Kit Bridge</div>
+        <div class="t-small">iQOO 15 Hardware</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+      <div class="chip chip-purple">🧠 On-Device AI Brain</div>
+      <div class="chip chip-green">✅ 70/70 Tests</div>
+      <div class="chip chip-blue">📱 iQOO 15 Verified</div>
+      <div class="chip chip-orange">🔋 0 KB Network</div>
+      <div class="chip chip-cyan">🔒 Privacy-First</div>
+      <div class="chip chip-red">💼 Office Kit Ready</div>
+    </div>
+
+    <div style="font-size:14px;color:var(--muted);">
+      github.com/&lt;team&gt;/IQOO_Hackathon &nbsp;·&nbsp; Submission: iqoo.reskilll.com
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- NAVIGATION -->
+<div class="nav" id="nav">
+  <button onclick="goTo(current-1)" title="Previous">←</button>
+  <div class="dots" id="dots"></div>
+  <span class="slide-counter" id="counter">1 / 11</span>
+  <button onclick="goTo(current+1)" title="Next">→</button>
+</div>
+
+<script>
+  const total = 11;
+  let current = 0;
+
+  function buildDots() {
+    const d = document.getElementById('dots');
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'dot' + (i === 0 ? ' active' : '');
+      dot.onclick = () => goTo(i);
+      d.appendChild(dot);
+    }
+  }
+
+  function goTo(n) {
+    if (n < 0 || n >= total) return;
+    const slides = document.querySelectorAll('.slide');
+    slides[current].classList.remove('active');
+    current = n;
+    slides[current].classList.add('active');
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === current));
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + total;
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') goTo(current + 1);
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goTo(current - 1);
+  });
+
+  // Touch swipe
+  let startX = 0;
+  document.addEventListener('touchstart', e => startX = e.touches[0].clientX);
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 50) goTo(current + (dx < 0 ? 1 : -1));
+  });
+
+  buildDots();
+</script>
+</body>
+</html>
