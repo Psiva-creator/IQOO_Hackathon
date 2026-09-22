@@ -97,4 +97,37 @@ class ContextCapture(
             null
         }
     }
+
+    /**
+     * Queries Android UsageStatsManager to aggregate daily foreground time across app categories.
+     * Enables the model to inspect daily screen time distribution (Productivity vs Social vs Entertainment).
+     */
+    fun getDailyAppUsageSummary(): Map<String, Long> {
+        if (context == null) return emptyMap()
+        return try {
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                ?: return emptyMap()
+            val cal = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val startTime = cal.timeInMillis
+            val endTime = System.currentTimeMillis()
+            val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+            val summary = mutableMapOf<String, Long>()
+            for (stat in stats) {
+                if (stat.totalTimeInForeground > 0) {
+                    val cat = classifyPackage(stat.packageName)
+                    val seconds = stat.totalTimeInForeground / 1000L
+                    summary[cat] = (summary[cat] ?: 0L) + seconds
+                }
+            }
+            summary
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
 }
+
