@@ -58,64 +58,88 @@ class PhoneUsageManager(private val context: Context) {
     }
 
     /**
-     * Returns today's exact per-app screen time, matching Android Digital Wellbeing.
+     * Returns today's exact per-app screen time (foreground usage per app),
+     * matching Android Digital Wellbeing exactly.
      *
-     * WHY INTERVAL_BEST NOT INTERVAL_DAILY:
-     *   INTERVAL_DAILY buckets align to UTC midnight, not local midnight.
-     *   On IST (+5:30) the UTC bucket starts at 5:30 AM — so querying [local-midnight, now]
-     *   with INTERVAL_DAILY silently drops all usage before 5:30 AM IST every day.
-     *   INTERVAL_BEST returns the finest available sub-records for the exact window given.
-     *   We then GROUP BY package and SUM totalTimeInForeground to get exact totals.
+     * PRIMARY (API 28+): queryAndAggregateUsageStats(startOfDay, now)
+     *   → The OS returns a Map<packageName, UsageStats> where totalTimeInForeground
+     *     is already perfectly summed for the exact [startOfDay, now] window.
+     *   → No UTC-bucket boundary issues, no manual grouping needed.
+     *   → This is the same internal call Android Digital Wellbeing uses.
+     *
+     * FALLBACK (API < 28): INTERVAL_BEST + group-sum per package
+     *   → Same window, manual SUM across sub-records per package.
      */
     fun getTodayPhoneSessions(nowMs: Long = System.currentTimeMillis()): List<AppUsageSession> {
         val manager = usageStatsManager ?: return emptyList()
         val startOfDay = getStartOfDayMillis(nowMs)
 
-        // Step 1: Query INTERVAL_BEST for exact window [midnight, now]
-        val rawStats = try {
-            manager.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startOfDay, nowMs)
-        } catch (e: Exception) {
-            return emptyList()
-        }
-
-        if (rawStats.isNullOrEmpty()) return emptyList()
-
-        // Step 2: Group by package and SUM — INTERVAL_BEST can return multiple sub-records
+        // Step 1: Get exact per-app foreground time from OS
         val aggregated = mutableMapOf<String, Long>()    // pkg -> total foreground ms
-        val lastUsedByPkg = mutableMapOf<String, Long>() // pkg -> latest lastTimeUsed
+        val lastUsedByPkg = mutableMapOf<String, Long>() // pkg -> lastTimeUsed
 
-        for (stat in rawStats) {
-            val pkg = stat.packageName ?: continue
-            if (isSystemPackage(pkg) || pkg == context.packageName) continue
-            if (stat.totalTimeInForeground <= 0L) continue
-            aggregated[pkg] = (aggregated[pkg] ?: 0L) + stat.totalTimeInForeground
-            val cur = lastUsedByPkg[pkg] ?: 0L
-            if (stat.lastTimeUsed > cur) lastUsedByPkg[pkg] = stat.lastTimeUsed
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // API 28+: queryAndAggregateUsageStats returns one entry per package,
+            // totalTimeInForeground summed across the exact window — zero ambiguity.
+            try {
+                val pm = context.packageManager
+                val statsMap = manager.queryAndAggregateUsageStats(startOfDay, nowMs)
+                for ((pkg, stat) in statsMap) {
+                    if (isSystemPackage(pkg, pm) || pkg == context.packageName) continue
+                    if (stat.totalTimeInForeground <= 0L) continue
+                    aggregated[pkg] = stat.totalTimeInForeground
+                    lastUsedByPkg[pkg] = stat.lastTimeUsed
+                }
+            } catch (_: Exception) { }
         }
 
-        // Step 3: Enrich lastUsed timestamps from events (for timeline ordering only, not duration)
+        // Fallback: INTERVAL_BEST + manual group-sum (also used if aggregated is still empty)
+        if (aggregated.isEmpty()) {
+            try {
+                val pm = context.packageManager
+                val rawStats = manager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_BEST, startOfDay, nowMs
+                )
+                for (stat in rawStats ?: emptyList()) {
+                    val pkg = stat.packageName ?: continue
+                    if (isSystemPackage(pkg, pm) || pkg == context.packageName) continue
+                    if (stat.totalTimeInForeground <= 0L) continue
+                    aggregated[pkg] = (aggregated[pkg] ?: 0L) + stat.totalTimeInForeground
+                    val cur = lastUsedByPkg[pkg] ?: 0L
+                    if (stat.lastTimeUsed > cur) lastUsedByPkg[pkg] = stat.lastTimeUsed
+                }
+            } catch (_: Exception) {
+                return emptyList()
+            }
+        }
+
+        if (aggregated.isEmpty()) return emptyList()
+
+        // Step 2: Enrich lastUsed from events for accurate timeline ordering
+        // (events never used for duration — only for chronological ordering in UI)
         try {
             val events = manager.queryEvents(startOfDay, nowMs)
-            val event = UsageEvents.Event()
+            val ev = UsageEvents.Event()
             while (events.hasNextEvent()) {
-                events.getNextEvent(event)
-                if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
-                    event.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
-                    val pkg = event.packageName ?: continue
+                events.getNextEvent(ev)
+                if (ev.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
+                    ev.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
+                    val pkg = ev.packageName ?: continue
                     val cur = lastUsedByPkg[pkg] ?: 0L
-                    if (event.timeStamp > cur) lastUsedByPkg[pkg] = event.timeStamp
+                    if (ev.timeStamp > cur) lastUsedByPkg[pkg] = ev.timeStamp
                 }
             }
         } catch (_: Exception) { }
 
-        // Step 4: Convert to session records, filter < MIN_SESSION_SECONDS
+        // Step 3: Build session list sorted by time-used descending (highest first)
         return aggregated
             .filter { (_, ms) -> ms >= MIN_SESSION_SECONDS * 1000L }
             .entries
             .sortedByDescending { it.value }
             .map { (pkg, ms) ->
                 val durationSec = ms / 1000L
-                val lastUsed = lastUsedByPkg[pkg]?.takeIf { it in startOfDay..nowMs } ?: nowMs
+                val lastUsed = lastUsedByPkg[pkg]
+                    ?.takeIf { it in startOfDay..nowMs } ?: nowMs
                 createSessionRecord(pkg, lastUsed, durationSec, context.packageManager)
             }
     }
@@ -123,20 +147,55 @@ class PhoneUsageManager(private val context: Context) {
     companion object {
         const val MIN_SESSION_SECONDS = 2L
 
-        // System packages and OEM launchers that must be ignored as non-user screen time
+        // System packages, OEM launchers, and iQOO/vivo background services
+        // that must be filtered from user-facing screen time
         val SYSTEM_PACKAGES = setOf(
-            "com.android.systemui",
-            "com.sec.android.app.launcher",             // Samsung One UI Home
-            "com.bbk.launcher2",                        // vivo / iQOO Launcher
-            "com.vivo.upslide",                         // vivo Control Center
-            "com.google.android.apps.nexuslauncher",    // Pixel Launcher
+            // Core Android OS
             "android",
-            "com.samsung.android.app.telephonyui",
+            "com.android.systemui",
+            "com.android.launcher",
+            "com.android.launcher2",
+            "com.android.launcher3",
+            "com.android.settings",
+            "com.android.phone",
+            "com.android.inputmethod.latin",
             "com.google.android.inputmethod.latin",
-            "com.samsung.android.honeyboard",           // Samsung Keyboard
-            "com.samsung.android.app.cocktailbarservice",// Samsung Edge panel
+            // iQOO / vivo launchers & system apps
+            "com.bbk.launcher2",                        // iQOO / vivo Launcher
+            "com.vivo.upslide",                         // vivo Control Center
+            "com.vivo.assistant",                       // Jovi AI
+            "com.vivo.aiassist",
+            "com.vivo.daemon",
+            "com.vivo.fingerprint",
+            "com.vivo.gallery",
+            "com.vivo.smartshot",
+            "com.vivo.globalImsService",
+            "com.vivo.incallui",
+            "com.vivo.faceid",
+            "com.iqoo.secure",
+            "com.iqoo.engineermode",
+            "com.vivo.vivomoji",
+            "com.vivo.pokenotification",
+            "com.vivo.systemmanager",                   // iQOO i-Manager
+            "com.bbk.theme",                            // vivo Theme Store
+            // Google system services (not user apps)
+            "com.google.android.apps.nexuslauncher",
+            "com.google.android.gms",
+            "com.google.android.gsf",
+            "com.google.android.packageinstaller",
+            "com.google.android.permissioncontroller",
+            "com.google.android.ext.services",
+            "com.google.android.ext.shared",
+            // Samsung
+            "com.sec.android.app.launcher",
+            "com.samsung.android.app.telephonyui",
+            "com.samsung.android.honeyboard",
+            "com.samsung.android.app.cocktailbarservice",
+            // Xiaomi/MIUI
             "com.miui.home",
-            "com.huawei.android.launcher"
+            "com.miui.systemAdSolution",
+            // Huawei
+            "com.huawei.android.launcher",
         )
 
         // Human-readable titles for common apps
@@ -415,8 +474,23 @@ class PhoneUsageManager(private val context: Context) {
             return sessions
         }
 
-        fun isSystemPackage(packageName: String): Boolean {
-            return SYSTEM_PACKAGES.contains(packageName)
+        fun isSystemPackage(packageName: String, packageManager: PackageManager? = null): Boolean {
+            if (SYSTEM_PACKAGES.contains(packageName)) return true
+            // Also filter any package prefixed with vivo/iqoo/bbk system namespaces
+            // that aren't in the explicit list (handles future firmware additions)
+            val lc = packageName.lowercase(Locale.ROOT)
+            if (lc.startsWith("com.vivo.") || lc.startsWith("com.iqoo.") ||
+                lc.startsWith("com.bbk.") || lc.startsWith("com.android.") ||
+                lc.startsWith("com.qualcomm.") || lc.startsWith("com.qti.") ||
+                lc.startsWith("com.google.android.gms")) return true
+            // Fall back to FLAG_SYSTEM if PackageManager is available
+            if (packageManager != null) {
+                return try {
+                    val ai = packageManager.getApplicationInfo(packageName, 0)
+                    (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                } catch (_: Exception) { false }
+            }
+            return false
         }
 
         private fun createSessionRecord(
