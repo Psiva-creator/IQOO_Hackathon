@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "outputDirectory": "public",
+  "routes": [
+    { "src": "/ppt", "dest": "/ppt.html" },
+    { "src": "/presentation", "dest": "/ppt.html" },
+    { "src": "/app", "dest": "/index.html" },
+    { "src": "/simulator", "dest": "/index.html" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
