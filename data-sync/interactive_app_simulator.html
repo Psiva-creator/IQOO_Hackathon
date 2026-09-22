@@ -475,11 +475,6 @@
             color: #38bdf8;
         }
 
-        .timeline-device-badge.laptop {
-            background: rgba(245, 158, 11, 0.15);
-            color: #fbbf24;
-        }
-
         /* Task Item */
         .task-item {
             background: #111827;
@@ -974,8 +969,8 @@
                         <div style="font-size: 26px; font-weight: 800; color: #fff; margin-top: 2px;" id="totalUsageHours">2h 35m</div>
                     </div>
                     <div style="text-align: right;">
-                        <span class="timeline-device-badge phone" id="phoneUsageBadge">📱 Phone: 1h 10m</span>
-                        <div style="margin-top: 4px;"><span class="timeline-device-badge laptop" id="laptopUsageBadge">💻 Laptop: 1h 25m</span></div>
+                        <span class="timeline-device-badge phone" id="phoneUsageBadge">📱 Phone On-Device</span>
+                        <div style="margin-top: 4px; font-size: 11px; color: #94a3b8;" id="phoneAppCountBadge">0 apps active</div>
                     </div>
                 </div>
             </div>
@@ -1019,11 +1014,13 @@
                 </div>
             </div>
 
-            <!-- Device Filter Chips -->
+            <!-- Category Filter Chips -->
             <div class="usage-filter-chips">
-                <button class="filter-chip active" id="chipAll" onclick="filterUsage('ALL')">ALL SESSIONS</button>
-                <button class="filter-chip" id="chipPhone" onclick="filterUsage('PHONE')">📱 PHONE ONLY</button>
-                <button class="filter-chip" id="chipLaptop" onclick="filterUsage('LAPTOP')">💻 LAPTOP ONLY</button>
+                <button class="filter-chip active" id="chipAll" onclick="filterUsage('ALL')">ALL APPS</button>
+                <button class="filter-chip" id="chipProd" onclick="filterUsage('Productivity')">⚡ PRODUCTIVITY</button>
+                <button class="filter-chip" id="chipComm" onclick="filterUsage('Communication')">💬 COMMUNICATION</button>
+                <button class="filter-chip" id="chipEnt" onclick="filterUsage('Entertainment')">🎬 ENTERTAINMENT</button>
+                <button class="filter-chip" id="chipSocial" onclick="filterUsage('Social')">📸 SOCIAL</button>
             </div>
 
             <!-- Chronological Session Timeline -->
@@ -1125,7 +1122,7 @@
             <div class="arch-diagram">
                 <div class="arch-step">
                     <span class="step-num">1</span>
-                    <span><strong>Member C (UsageStatsManager & Bridge):</strong> Captures phone screen time and syncs companion laptop usage.</span>
+                    <span><strong>Member C (UsageStatsManager & Telemetry):</strong> Captures on-device phone screen time & app transitions in real time.</span>
                 </div>
                 <div class="arch-step">
                     <span class="step-num">2</span>
@@ -1317,48 +1314,39 @@
         </div>
 
         <p style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">
-            Input your actual phone or laptop apps and time spent today. The AI Coach and fatigue meter will adapt to your real routine:
+            Input your actual phone apps and time spent today. The AI Coach and fatigue meter will adapt to your real routine:
         </p>
 
         <div style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
                 <label class="form-label">App Name</label>
-                <input type="text" id="inputCustomApp" class="input-text" placeholder="e.g. WhatsApp, Instagram, YouTube, VS Code" value="WhatsApp">
+                <input type="text" id="inputCustomApp" class="input-text" placeholder="e.g. WhatsApp, Instagram, YouTube, Chrome" value="WhatsApp">
             </div>
 
             <div class="form-group">
                 <label class="form-label">Category</label>
                 <select id="inputCustomCategory" class="select-box">
-                    <option value="Communication" selected>Communication (WhatsApp, Slack)</option>
-                    <option value="Productivity">Productivity (IDE, Docs, Work)</option>
+                    <option value="Communication" selected>Communication (WhatsApp, Telegram)</option>
+                    <option value="Productivity">Productivity (Chrome, Docs, Keep)</option>
                     <option value="Social">Social Media (Instagram, Twitter/X)</option>
-                    <option value="Entertainment">Entertainment (YouTube, Netflix)</option>
-                    <option value="Utility">Utility (Settings, Clock, Files)</option>
+                    <option value="Entertainment">Entertainment (YouTube, Spotify)</option>
+                    <option value="Utility">Utility (Settings, Clock, Camera)</option>
                 </select>
             </div>
 
-            <div style="display: flex; gap: 10px;">
-                <div class="form-group" style="flex: 1;">
-                    <label class="form-label">Duration (Minutes)</label>
-                    <input type="number" id="inputCustomDuration" class="input-text" value="35" min="1" max="600">
-                </div>
-                <div class="form-group" style="flex: 1;">
-                    <label class="form-label">Device</label>
-                    <select id="inputCustomDevice" class="select-box">
-                        <option value="PHONE" selected>📱 Phone</option>
-                        <option value="LAPTOP">💻 Laptop</option>
-                    </select>
-                </div>
+            <div class="form-group">
+                <label class="form-label">Duration (Minutes)</label>
+                <input type="number" id="inputCustomDuration" class="input-text" value="30" min="1" max="600">
             </div>
 
             <!-- Quick Template Buttons -->
             <div>
                 <label class="form-label" style="margin-bottom: 6px; display: block;">Quick Add Templates:</label>
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button type="button" class="filter-chip" onclick="quickFillApp('WhatsApp', 'Communication', 30, 'PHONE')">WhatsApp (30m)</button>
-                    <button type="button" class="filter-chip" onclick="quickFillApp('YouTube', 'Entertainment', 45, 'PHONE')">YouTube (45m)</button>
-                    <button type="button" class="filter-chip" onclick="quickFillApp('Instagram', 'Social', 25, 'PHONE')">Instagram (25m)</button>
-                    <button type="button" class="filter-chip" onclick="quickFillApp('VS Code', 'Productivity', 60, 'LAPTOP')">VS Code (60m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('WhatsApp', 'Communication', 30)">WhatsApp (30m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('YouTube', 'Entertainment', 45)">YouTube (45m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('Instagram', 'Social', 25)">Instagram (25m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('Google Chrome', 'Productivity', 40)">Chrome (40m)</button>
                 </div>
             </div>
 
@@ -1411,7 +1399,7 @@
         <div class="arch-diagram" style="margin-bottom: 16px;">
             <div class="arch-step">
                 <span class="step-num">1</span>
-                <span><strong>Member C:</strong> Phone UsageStats + Laptop sync</span>
+                <span><strong>Member C:</strong> Phone UsageStats & Device Telemetry</span>
             </div>
             <div class="arch-step">
                 <span class="step-num">2</span>
@@ -1455,12 +1443,12 @@
             { app: "YouTube", category: "Entertainment", offsetMins: 32, minutes: 28, device: "PHONE" },
             { app: "Google Chrome", category: "Productivity", offsetMins: 68, minutes: 42, device: "PHONE" },
             { app: "Instagram", category: "Social", offsetMins: 115, minutes: 20, device: "PHONE" },
-            { app: "VS Code / IDE", category: "Productivity", offsetMins: 175, minutes: 85, device: "LAPTOP" },
-            { app: "Slack / Teams", category: "Communication", offsetMins: 260, minutes: 25, device: "LAPTOP" },
-            { app: "Gmail", category: "Communication", offsetMins: 330, minutes: 15, device: "PHONE" },
-            { app: "Spotify", category: "Entertainment", offsetMins: 400, minutes: 45, device: "PHONE" },
+            { app: "Twitter / X", category: "Social", offsetMins: 175, minutes: 30, device: "PHONE" },
+            { app: "Gmail", category: "Communication", offsetMins: 260, minutes: 15, device: "PHONE" },
+            { app: "Spotify", category: "Entertainment", offsetMins: 330, minutes: 45, device: "PHONE" },
+            { app: "Telegram", category: "Communication", offsetMins: 400, minutes: 25, device: "PHONE" },
             { app: "Productivity AI", category: "Productivity", offsetMins: 460, minutes: 25, device: "PHONE" },
-            { app: "Terminal / Dev", category: "Productivity", offsetMins: 520, minutes: 40, device: "LAPTOP" }
+            { app: "Google Keep", category: "Productivity", offsetMins: 520, minutes: 20, device: "PHONE" }
         ];
 
         return template.map(item => ({
@@ -1699,19 +1687,28 @@
         currentUsageFilter = filter;
         document.getElementById('chipAll').classList.remove('active');
         document.getElementById('chipPhone').classList.remove('active');
-        document.getElementById('chipLaptop').classList.remove('active');
-
-        if (filter === 'ALL') document.getElementById('chipAll').classList.add('active');
-        else if (filter === 'PHONE') document.getElementById('chipPhone').classList.add('active');
-        else if (filter === 'LAPTOP') document.getElementById('chipLaptop').classList.add('active');
+        if (filter === 'ALL') {
+            const btn = document.getElementById('chipAll');
+            if (btn) btn.classList.add('active');
+        } else if (filter === 'Productivity') {
+            const btn = document.getElementById('chipProd');
+            if (btn) btn.classList.add('active');
+        } else if (filter === 'Communication') {
+            const btn = document.getElementById('chipComm');
+            if (btn) btn.classList.add('active');
+        } else if (filter === 'Entertainment') {
+            const btn = document.getElementById('chipEnt');
+            if (btn) btn.classList.add('active');
+        } else if (filter === 'Social') {
+            const btn = document.getElementById('chipSocial');
+            if (btn) btn.classList.add('active');
+        }
 
         renderUsageTimeline();
     }
 
     function recalculateAndRenderUsage() {
         let totalMins = 0;
-        let phoneMins = 0;
-        let laptopMins = 0;
         let prodMins = 0;
         let commMins = 0;
         let entMins = 0;
@@ -1720,8 +1717,6 @@
         usageTimeline.forEach(item => {
             const m = item.minutes || 15;
             totalMins += m;
-            if (item.device === 'PHONE') phoneMins += m;
-            else laptopMins += m;
 
             if (item.category === 'Productivity') prodMins += m;
             else if (item.category === 'Communication') commMins += m;
@@ -1733,8 +1728,10 @@
         const totalStr = fmt(totalMins);
 
         document.getElementById('totalUsageHours').innerText = totalStr;
-        document.getElementById('phoneUsageBadge').innerText = `📱 Phone: ${fmt(phoneMins)}`;
-        document.getElementById('laptopUsageBadge').innerText = `💻 Laptop: ${fmt(laptopMins)}`;
+        const phoneBadge = document.getElementById('phoneUsageBadge');
+        if (phoneBadge) phoneBadge.innerText = '📱 Phone On-Device';
+        const countBadge = document.getElementById('phoneAppCountBadge');
+        if (countBadge) countBadge.innerText = `${usageTimeline.length} apps active`;
 
         // Update Quick Summary on Focus Tab
         const quickEl = document.getElementById('quickUsageTime');
@@ -1768,11 +1765,11 @@
         const container = document.getElementById('usageTimelineList');
         const filtered = usageTimeline.filter(item => {
             if (currentUsageFilter === 'ALL') return true;
-            return item.device === currentUsageFilter;
+            return item.category === currentUsageFilter;
         });
 
         if (filtered.length === 0) {
-            container.innerHTML = `<div style="text-align: center; color: #64748b; padding: 20px; font-size: 13px;">No recorded usage for this filter. Use <strong>"Add My Real Apps"</strong> above to log your apps.</div>`;
+            container.innerHTML = `<div style="text-align: center; color: #64748b; padding: 20px; font-size: 13px;">No recorded usage for this filter. Use <strong>"Enter Today's Exact Screen Time"</strong> above to log your apps.</div>`;
             return;
         }
 
@@ -1786,7 +1783,6 @@
                     <div style="font-size: 13px; font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.app}</div>
                     <div style="font-size: 11px; color: #94a3b8;">${item.category}</div>
                 </div>
-                <span class="timeline-device-badge ${item.device.toLowerCase()}">${item.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</span>
                 <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">${item.minutes}m</span>
                 <button style="background: none; border: none; color: #38bdf8; font-size: 13px; cursor: pointer; padding: 2px 4px;" onclick="quickEditItemDuration(${idx})" title="Edit exact minutes">✏️</button>
                 <button style="background: none; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 2px 4px;" onclick="deleteUsageItem(${idx})" title="Delete entry">✕</button>
@@ -1968,11 +1964,11 @@
         { name: "Instagram", category: "Social", device: "PHONE", icon: "📸" },
         { name: "Google Chrome", category: "Productivity", device: "PHONE", icon: "🌐" },
         { name: "Gmail", category: "Communication", device: "PHONE", icon: "✉️" },
-        { name: "VS Code / IDE", category: "Productivity", device: "LAPTOP", icon: "💻" },
-        { name: "Slack / Teams", category: "Communication", device: "LAPTOP", icon: "💼" },
         { name: "Spotify", category: "Entertainment", device: "PHONE", icon: "🎵" },
         { name: "Twitter / X", category: "Social", device: "PHONE", icon: "🐦" },
-        { name: "Telegram", category: "Communication", device: "PHONE", icon: "✈️" }
+        { name: "Telegram", category: "Communication", device: "PHONE", icon: "✈️" },
+        { name: "Google Keep", category: "Productivity", device: "PHONE", icon: "📝" },
+        { name: "LinkedIn", category: "Social", device: "PHONE", icon: "💼" }
     ];
 
     function openExactUsageModal() {
@@ -2005,7 +2001,7 @@
                     appMap.set(item.app, {
                         name: item.app,
                         category: item.category || 'Productivity',
-                        device: item.device || 'PHONE',
+                        device: 'PHONE',
                         icon: "📱",
                         minutes: item.minutes
                     });
@@ -2020,7 +2016,7 @@
                     <span style="font-size: 16px;">${app.icon || '📱'}</span>
                     <div style="min-width: 0;">
                         <div style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${app.name}</div>
-                        <div style="font-size: 10px; color: #94a3b8;">${app.category} • ${app.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</div>
+                        <div style="font-size: 10px; color: #94a3b8;">${app.category}</div>
                     </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -2077,7 +2073,7 @@
                 <span style="font-size: 16px;">📱</span>
                 <div style="min-width: 0;">
                     <div style="font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
-                    <div style="font-size: 10px; color: #94a3b8;">${catInput.value} • 📱 Phone</div>
+                    <div style="font-size: 10px; color: #94a3b8;">${catInput.value}</div>
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -2108,7 +2104,7 @@
                     app: inp.dataset.app,
                     category: inp.dataset.category || 'Productivity',
                     minutes: mins,
-                    device: inp.dataset.device || 'PHONE'
+                    device: 'PHONE'
                 });
             }
         });
@@ -2126,7 +2122,7 @@
                 app: item.app,
                 category: item.category,
                 minutes: item.minutes,
-                device: item.device,
+                device: 'PHONE',
                 time: getExactPhoneClockTime(offsetMins),
                 relative: getRelativeTimeLabel(offsetMins),
                 offsetMins: offsetMins
@@ -2151,7 +2147,7 @@
             "YouTube": 50,
             "Instagram": 25,
             "Google Chrome": 40,
-            "VS Code / IDE": 75,
+            "Twitter / X": 20,
             "Gmail": 15,
             "Spotify": 30
         };
@@ -2232,18 +2228,17 @@
         document.getElementById('customUsageModal').classList.add('hidden');
     }
 
-    function quickFillApp(name, category, minutes, device) {
+    function quickFillApp(name, category, minutes) {
         document.getElementById('inputCustomApp').value = name;
         document.getElementById('inputCustomCategory').value = category;
         document.getElementById('inputCustomDuration').value = minutes;
-        document.getElementById('inputCustomDevice').value = device;
     }
 
     function saveCustomAppSession() {
         const app = document.getElementById('inputCustomApp').value.trim() || "My App";
         const category = document.getElementById('inputCustomCategory').value;
         const minutes = parseInt(document.getElementById('inputCustomDuration').value) || 15;
-        const device = document.getElementById('inputCustomDevice').value;
+        const device = 'PHONE';
 
         const now = new Date();
         const hrs = now.getHours();
