@@ -780,8 +780,9 @@
         <!-- Unified App Bar with iQOO Branding & Demo Controls -->
         <div class="app-bar">
             <h1>Productivity AI <span class="iqoo-badge">iQOO 15</span></h1>
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 6px; align-items: center;">
                 <span class="active-tab-indicator" id="headerTabLabel">Focus</span>
+                <button class="demo-btn-pill" style="border-color: #10b981; color: #34d399; background: rgba(16, 185, 129, 0.12);" onclick="openStartupModal()" title="Open Permission Dialog">🔐 Access</button>
                 <button class="demo-btn-pill" onclick="openDemoModal()" title="Open Architecture & Demo Controls">⚙️ Demo</button>
             </div>
         </div>
@@ -1136,7 +1137,7 @@
 </div>
 
 <!-- STARTUP ONBOARDING PERMISSION MODAL -->
-<div id="startupPermissionModal" class="modal-overlay hidden">
+<div id="startupPermissionModal" class="modal-overlay">
     <div class="modal-card" style="border: 2px solid #38bdf8; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), 0 0 30px rgba(56, 189, 248, 0.25);">
         <div style="text-align: center; margin-bottom: 16px;">
             <div style="font-size: 38px; margin-bottom: 8px;">📱⚡</div>
@@ -1796,8 +1797,15 @@
         setTimeout(() => toast.classList.add('hidden'), 4500);
     }
 
+    function openStartupModal() {
+        const modal = document.getElementById('startupPermissionModal');
+        if (modal) modal.classList.remove('hidden');
+    }
+
     function closeStartupModal() {
-        document.getElementById('startupPermissionModal').classList.add('hidden');
+        const modal = document.getElementById('startupPermissionModal');
+        if (modal) modal.classList.add('hidden');
+        sessionStorage.setItem('iqoo_perm_dismissed', 'true');
     }
 
     function grantStartupPermission() {
@@ -1808,6 +1816,8 @@
     function grantAccessToAllAppsAtOnce() {
         closePermissionModal();
         closeStartupModal();
+        sessionStorage.setItem('iqoo_perm_dismissed', 'true');
+        sessionStorage.setItem('iqoo_perm_session', 'true');
         const banner = document.getElementById('permBanner');
         if (banner) {
             banner.style.borderLeftColor = '#10b981';
@@ -1915,16 +1925,15 @@
     }
 
     // Initialize
-    const hasPerm = localStorage.getItem('iqoo_perm_granted') === 'true';
-    if (hasPerm) {
+    const isDismissed = sessionStorage.getItem('iqoo_perm_dismissed') === 'true';
+    const startModal = document.getElementById('startupPermissionModal');
+    if (isDismissed) {
+        if (startModal) startModal.classList.add('hidden');
         const banner = document.getElementById('permBanner');
         if (banner) banner.classList.add('hidden');
     } else {
-        // Automatically ask for permission at the very start
-        setTimeout(() => {
-            const modal = document.getElementById('startupPermissionModal');
-            if (modal) modal.classList.remove('hidden');
-        }, 150);
+        // Show permission popup at the very start
+        if (startModal) startModal.classList.remove('hidden');
     }
     renderHistoryList();
     recalculateAndRenderUsage();
