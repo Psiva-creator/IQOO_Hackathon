@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
 import com.iqoo.productivityai.ui.theme.ProductivityAITheme
+import com.iqoo.productivityai.usage.AppUsageScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +72,7 @@ fun ProductivityApp() {
     var statusMessage by rememberSaveable { mutableStateOf("") }
     var showHistory by rememberSaveable { mutableStateOf(false) }
     var showInsights by rememberSaveable { mutableStateOf(false) }
+    var showAppUsage by rememberSaveable { mutableStateOf(false) }
 
     val taskTypes = listOf(
         "coding", "writing", "meeting", "reading",
@@ -89,7 +91,13 @@ fun ProductivityApp() {
             TopAppBar(title = { Text("Productivity AI") })
         }
     ) { paddingValues ->
-        if (showHistory) {
+        if (showAppUsage) {
+            Column(
+                modifier = Modifier.padding(paddingValues)
+            ) {
+                AppUsageScreen(onBack = { showAppUsage = false })
+            }
+        } else if (showHistory) {
             Column(
                 modifier = Modifier.padding(paddingValues)
             ) {
@@ -229,6 +237,14 @@ fun ProductivityApp() {
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
+                }
+
+                Button(
+                    onClick = { showAppUsage = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("📱 Digital Screen Time & App Usage")
                 }
 
                 Button(

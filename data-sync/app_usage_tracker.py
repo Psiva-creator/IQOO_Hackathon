@@ -223,7 +223,8 @@ class AppUsageRecord:
             "appCategory": self.app_category,
             "durationSeconds": self.duration_seconds,
             "formattedTime": format_duration(self.duration_seconds),
-            "timeStr": format_time_hh_mm(self.start_time_ms)
+            "timeStr": format_time_hh_mm(self.start_time_ms),
+            "device": "LAPTOP"
         }
 
 
@@ -467,6 +468,7 @@ class AppUsageTracker:
             for item in summary:
                 item["formattedTime"] = format_duration(item["durationSeconds"])
                 item["percentage"] = round((item["durationSeconds"] / grand_total * 100)) if grand_total > 0 else 0
+                item["device"] = "LAPTOP"
 
             return summary
 
@@ -483,10 +485,16 @@ class AppUsageTracker:
         """Bundles complete summary, category breakdown, and timeline for Office Kit synchronization."""
         with self._lock:
             summary = self.get_summary()
-            timeline = list(self.timeline)
+            timeline = []
+            for entry in self.timeline:
+                item = dict(entry)
+                if "device" not in item:
+                    item["device"] = "LAPTOP"
+                timeline.append(item)
             categories = self.get_category_summary()
             total_sec = sum(item["durationSeconds"] for item in summary)
             return {
+                "device": "LAPTOP",
                 "summary": summary,
                 "categoryBreakdown": categories,
                 "timeline": timeline,

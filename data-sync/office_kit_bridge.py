@@ -66,11 +66,14 @@ DEFAULT_INSIGHTS = {
         "summary": "HIGH sensitivity: Writing tasks show high abandonment when Entertainment or Social apps are accessed."
     },
     "appUsage": {
+        "device": "LAPTOP",
+        "totalScreenTimeSeconds": 3780,
+        "totalScreenTimeFormatted": "1h 3m",
         "summary": [
-            {"appName": "Chrome", "category": "Productivity", "durationSeconds": 1500, "formattedTime": "25 min", "percentage": 39},
-            {"appName": "YouTube", "category": "Entertainment", "durationSeconds": 1080, "formattedTime": "18 min", "percentage": 28},
-            {"appName": "WhatsApp", "category": "Communication", "durationSeconds": 720, "formattedTime": "12 min", "percentage": 19},
-            {"appName": "Instagram", "category": "Social", "durationSeconds": 480, "formattedTime": "8 min", "percentage": 13}
+            {"appName": "Chrome", "category": "Productivity", "durationSeconds": 1500, "formattedTime": "25 min", "percentage": 39, "device": "LAPTOP"},
+            {"appName": "YouTube", "category": "Entertainment", "durationSeconds": 1080, "formattedTime": "18 min", "percentage": 28, "device": "LAPTOP"},
+            {"appName": "WhatsApp", "category": "Communication", "durationSeconds": 720, "formattedTime": "12 min", "percentage": 19, "device": "LAPTOP"},
+            {"appName": "Instagram", "category": "Social", "durationSeconds": 480, "formattedTime": "8 min", "percentage": 13, "device": "LAPTOP"}
         ],
         "categoryBreakdown": {
             "Productivity": 1500,
@@ -79,10 +82,10 @@ DEFAULT_INSIGHTS = {
             "Social": 480
         },
         "timeline": [
-            {"timestamp": 1789980000000, "timeStr": "10:00", "appName": "Chrome", "category": "Productivity", "durationSeconds": 1500, "formattedTime": "25 min"},
-            {"timestamp": 1789981500000, "timeStr": "10:25", "appName": "WhatsApp", "category": "Communication", "durationSeconds": 720, "formattedTime": "12 min"},
-            {"timestamp": 1789982220000, "timeStr": "10:37", "appName": "YouTube", "category": "Entertainment", "durationSeconds": 1080, "formattedTime": "18 min"},
-            {"timestamp": 1789983300000, "timeStr": "10:55", "appName": "Chrome", "category": "Productivity", "durationSeconds": 600, "formattedTime": "10 min"}
+            {"timestamp": 1789980000000, "timeStr": "10:00", "appName": "Chrome", "category": "Productivity", "durationSeconds": 1500, "formattedTime": "25 min", "device": "LAPTOP"},
+            {"timestamp": 1789981500000, "timeStr": "10:25", "appName": "WhatsApp", "category": "Communication", "durationSeconds": 720, "formattedTime": "12 min", "device": "LAPTOP"},
+            {"timestamp": 1789982220000, "timeStr": "10:37", "appName": "YouTube", "category": "Entertainment", "durationSeconds": 1080, "formattedTime": "18 min", "device": "LAPTOP"},
+            {"timestamp": 1789983300000, "timeStr": "10:55", "appName": "Chrome", "category": "Productivity", "durationSeconds": 600, "formattedTime": "10 min", "device": "LAPTOP"}
         ]
     }
 }
@@ -674,6 +677,15 @@ class OfficeKitBridgeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/sync":
+            history_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_usage_history.json")
+            if os.path.exists(history_file):
+                try:
+                    from app_usage_tracker import AppUsageTracker
+                    tracker = AppUsageTracker(history_file=history_file)
+                    if tracker.timeline:
+                        LATEST_INSIGHTS["appUsage"] = tracker.get_app_usage_payload()
+                except Exception:
+                    pass
             self._set_headers(200, "application/json")
             self.wfile.write(json.dumps(LATEST_INSIGHTS, indent=2).encode("utf-8"))
         elif self.path == "/api/status":
