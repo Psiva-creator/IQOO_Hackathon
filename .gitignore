@@ -3,6 +3,7 @@
 build/
 app/build/
 *.apk
+!public/*.apk
 *.aab
 *.ap_
 *.dex
