@@ -51,22 +51,21 @@ class PhoneUsageManager(private val context: Context) {
 
     /**
      * Returns an ordered list of intents to open Usage Access settings.
-     * Try each in order until one resolves — iQOO/vivo needs the package URI form.
-     * Call openUsageSettings(context) instead of using this directly.
+     * Each is tried in order — first one that doesn't throw opens the settings.
      */
     fun getUsageSettingsIntents(): List<Intent> {
         val pkg = context.packageName
         return listOf(
-            // Android 10+ — opens directly to this app's Usage Access toggle
+            // Best: Android 10+ opens directly to THIS app's Usage Access toggle
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                 data = android.net.Uri.parse("package:$pkg")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             },
-            // Standard — opens the Usage Access list (user taps the app)
+            // Standard: opens the Usage Access list page
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             },
-            // iQOO/vivo specific path via component
+            // iQOO/vivo com.android.settings component
             Intent().apply {
                 setClassName(
                     "com.android.settings",
@@ -74,7 +73,15 @@ class PhoneUsageManager(private val context: Context) {
                 )
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             },
-            // Last resort — general Settings
+            // iQOO/vivo com.vivo.settings component (some firmware versions)
+            Intent().apply {
+                setClassName(
+                    "com.vivo.settings",
+                    "com.vivo.settings.Settings\$UsageAccessSettingsActivity"
+                )
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // Absolute last resort: open general Settings
             Intent(Settings.ACTION_SETTINGS).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
@@ -82,29 +89,23 @@ class PhoneUsageManager(private val context: Context) {
     }
 
     /**
-     * Opens Usage Access settings page. Tries multiple intents until one works.
+     * Opens Usage Access settings. Tries each intent in order; moves to next on failure.
+     * Does NOT use resolveActivity() — on Android 11+ that always returns null
+     * unless <queries> are declared, and even then fails on some OEM builds.
+     * Direct startActivity() in try-catch is the only reliable approach.
      */
     fun openUsageSettings() {
         for (intent in getUsageSettingsIntents()) {
             try {
-                if (intent.resolveActivity(context.packageManager) != null ||
-                    intent.action == Settings.ACTION_SETTINGS) {
-                    context.startActivity(intent)
-                    return
-                }
-            } catch (_: Exception) { }
+                context.startActivity(intent)
+                return   // success — stop here
+            } catch (_: Exception) {
+                // This intent not supported on this device — try next
+            }
         }
-        // Absolute fallback
-        try {
-            context.startActivity(
-                Intent(Settings.ACTION_SETTINGS).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-            )
-        } catch (_: Exception) { }
     }
 
-    /** Legacy single-intent getter kept for compatibility. */
+    /** Single intent getter kept for backward compatibility. */
     fun getUsageSettingsIntent(): Intent {
         return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
             data = android.net.Uri.parse("package:${context.packageName}")
