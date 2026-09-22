@@ -60,34 +60,40 @@ class PhoneUsageManager(private val context: Context) {
     /**
      * Returns today's exact per-app screen time, matching Android Digital Wellbeing.
      *
-     * Strategy:
-     *  1. PRIMARY — queryUsageStats(INTERVAL_DAILY): gives the OS-level cumulative foreground
-     *     time per app from midnight to now. This is the exact same source Android Digital
-     *     Wellbeing uses, so totals will match the system screen time exactly.
-     *  2. ENRICH — queryEvents: used only to obtain each app's last-used timestamp for
-     *     chronological ordering in the timeline. Duration is never taken from events here.
-     *  3. FILTER — system packages, launchers, and our own app are excluded.
+     * WHY INTERVAL_BEST NOT INTERVAL_DAILY:
+     *   INTERVAL_DAILY buckets align to UTC midnight, not local midnight.
+     *   On IST (+5:30) the UTC bucket starts at 5:30 AM — so querying [local-midnight, now]
+     *   with INTERVAL_DAILY silently drops all usage before 5:30 AM IST every day.
+     *   INTERVAL_BEST returns the finest available sub-records for the exact window given.
+     *   We then GROUP BY package and SUM totalTimeInForeground to get exact totals.
      */
     fun getTodayPhoneSessions(nowMs: Long = System.currentTimeMillis()): List<AppUsageSession> {
         val manager = usageStatsManager ?: return emptyList()
         val startOfDay = getStartOfDayMillis(nowMs)
 
-        // Step 1: Get exact cumulative screen time per app from OS
-        val dailyStats = try {
-            manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, nowMs)
-                .filter {
-                    it.totalTimeInForeground >= MIN_SESSION_SECONDS * 1000L &&
-                    !isSystemPackage(it.packageName) &&
-                    it.packageName != context.packageName
-                }
+        // Step 1: Query INTERVAL_BEST for exact window [midnight, now]
+        val rawStats = try {
+            manager.queryUsageStats(UsageStatsManager.INTERVAL_BEST, startOfDay, nowMs)
         } catch (e: Exception) {
             return emptyList()
         }
 
-        if (dailyStats.isEmpty()) return emptyList()
+        if (rawStats.isNullOrEmpty()) return emptyList()
 
-        // Step 2: Build a map of packageName -> lastUsedTimestamp from events (for ordering only)
-        val lastUsedMap = mutableMapOf<String, Long>()
+        // Step 2: Group by package and SUM — INTERVAL_BEST can return multiple sub-records
+        val aggregated = mutableMapOf<String, Long>()    // pkg -> total foreground ms
+        val lastUsedByPkg = mutableMapOf<String, Long>() // pkg -> latest lastTimeUsed
+
+        for (stat in rawStats) {
+            val pkg = stat.packageName ?: continue
+            if (isSystemPackage(pkg) || pkg == context.packageName) continue
+            if (stat.totalTimeInForeground <= 0L) continue
+            aggregated[pkg] = (aggregated[pkg] ?: 0L) + stat.totalTimeInForeground
+            val cur = lastUsedByPkg[pkg] ?: 0L
+            if (stat.lastTimeUsed > cur) lastUsedByPkg[pkg] = stat.lastTimeUsed
+        }
+
+        // Step 3: Enrich lastUsed timestamps from events (for timeline ordering only, not duration)
         try {
             val events = manager.queryEvents(startOfDay, nowMs)
             val event = UsageEvents.Event()
@@ -96,25 +102,21 @@ class PhoneUsageManager(private val context: Context) {
                 if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
                     event.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
                     val pkg = event.packageName ?: continue
-                    val existing = lastUsedMap[pkg] ?: 0L
-                    if (event.timeStamp > existing) {
-                        lastUsedMap[pkg] = event.timeStamp
-                    }
+                    val cur = lastUsedByPkg[pkg] ?: 0L
+                    if (event.timeStamp > cur) lastUsedByPkg[pkg] = event.timeStamp
                 }
             }
-        } catch (e: Exception) {
-            // Events are best-effort for timeline ordering only — proceed without them
-        }
+        } catch (_: Exception) { }
 
-        // Step 3: Convert each daily stat to a session record using exact OS duration
-        return dailyStats
-            .sortedByDescending { it.totalTimeInForeground }
-            .map { stat ->
-                val durationSec = stat.totalTimeInForeground / 1000L
-                // Prefer event-based last-used for accurate timestamp; fall back to stat value
-                val lastUsed = lastUsedMap[stat.packageName]
-                    ?: if (stat.lastTimeUsed in (startOfDay..nowMs)) stat.lastTimeUsed else nowMs
-                createSessionRecord(stat.packageName, lastUsed, durationSec, context.packageManager)
+        // Step 4: Convert to session records, filter < MIN_SESSION_SECONDS
+        return aggregated
+            .filter { (_, ms) -> ms >= MIN_SESSION_SECONDS * 1000L }
+            .entries
+            .sortedByDescending { it.value }
+            .map { (pkg, ms) ->
+                val durationSec = ms / 1000L
+                val lastUsed = lastUsedByPkg[pkg]?.takeIf { it in startOfDay..nowMs } ?: nowMs
+                createSessionRecord(pkg, lastUsed, durationSec, context.packageManager)
             }
     }
 
