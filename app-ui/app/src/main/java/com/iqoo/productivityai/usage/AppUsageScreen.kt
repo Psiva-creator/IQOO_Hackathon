@@ -1,7 +1,6 @@
 package com.iqoo.productivityai.usage
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -25,10 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,585 +38,307 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * Jetpack Compose Unified Multi-Device Digital Screen Time & App Usage Dashboard.
- * Displays real Phone usage (UsageStatsManager) + real Laptop usage (Office Kit Bridge).
+ * Phone-only Screen Time dashboard.
+ * Reads exact per-app screen time from Android's UsageStatsManager (same source as Digital Wellbeing).
+ * Shows a simple "Allow Access" screen when permission is not yet granted.
  */
 @Composable
 fun AppUsageScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
     val phoneManager = remember { PhoneUsageManager(context) }
-    val laptopManager = remember { LaptopSyncManager(context) }
 
+    var isPermissionGranted by remember { mutableStateOf(phoneManager.hasUsagePermission()) }
     var usageState by remember {
         mutableStateOf(
-            UnifiedDigitalUsageState(
-                isPermissionGranted = phoneManager.hasUsagePermission(),
-                laptopHost = laptopManager.getLaptopIp()
-            )
+            UnifiedDigitalUsageState(isPermissionGranted = phoneManager.hasUsagePermission())
         )
     }
+    var selectedCategory by rememberSaveable { mutableStateOf("All") }
 
-    var selectedFilter by rememberSaveable { mutableStateOf("ALL") }
-    var showIpDialog by rememberSaveable { mutableStateOf(false) }
-    var tempIpInput by rememberSaveable { mutableStateOf(laptopManager.getLaptopIp()) }
-    var isSyncing by rememberSaveable { mutableStateOf(false) }
+    val categories = listOf("All", "Productivity", "Communication", "Entertainment", "Social", "Utility")
 
-    // Function to load and refresh usage state
-    fun refreshData(triggerNetworkSync: Boolean = false) {
+    fun loadData() {
         coroutineScope.launch {
             val hasPerm = phoneManager.hasUsagePermission()
-            val phoneSessions = if (hasPerm) phoneManager.getTodayPhoneSessions() else emptyList()
-
-            val laptopResult = if (triggerNetworkSync) {
-                isSyncing = true
-                val res = laptopManager.syncWithLaptop()
-                isSyncing = false
-                res
-            } else {
-                laptopManager.loadCachedLaptopData()
-            }
-
+            isPermissionGranted = hasPerm
+            if (!hasPerm) return@launch
+            val sessions = phoneManager.getTodayPhoneSessions()
             usageState = UnifiedUsageAggregator.aggregate(
-                phoneSessions = phoneSessions,
-                laptopSessions = laptopResult.sessions,
-                syncStatus = laptopResult.status,
-                lastSyncTimestamp = laptopResult.lastSyncTimestamp,
-                laptopHost = laptopManager.getLaptopIp(),
+                phoneSessions = sessions,
+                laptopSessions = emptyList(),
+                syncStatus = SyncStatus.IDLE,
+                lastSyncTimestamp = 0L,
+                laptopHost = "",
                 isPermissionGranted = hasPerm,
-                statusMessage = laptopResult.errorMessage ?: ""
+                statusMessage = ""
             )
         }
     }
 
-    // Initial load: read cached laptop data and live phone data
-    LaunchedEffect(Unit) {
-        refreshData(triggerNetworkSync = false)
+    LaunchedEffect(Unit) { loadData() }
+
+    // — Simple full-screen allow prompt if permission not granted —
+    if (!isPermissionGranted) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("📱", fontSize = 56.sp, textAlign = TextAlign.Center)
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = "Allow Screen Time Access",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Productivity AI needs permission to read your app usage so it can show your real screen time — exactly as Android Digital Wellbeing does.\n\nAll data stays 100% on your phone.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(28.dp))
+            Button(
+                onClick = { context.startActivity(phoneManager.getUsageSettingsIntent()) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text(
+                    text = "Allow in Settings",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Text("Back")
+            }
+        }
+        return
     }
 
+    // — Main screen time dashboard —
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Top Back Row
+        // Header row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(onClick = onBack) {
-                Text("Back to Start Task")
+            Button(onClick = onBack, shape = RoundedCornerShape(10.dp)) {
+                Text("← Back")
             }
-
             Text(
-                text = "📱+💻 Digital Usage",
+                text = "📱 Screen Time",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+            Button(
+                onClick = { loadData() },
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+            ) {
+                Text("Refresh")
+            }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Permission Banner (if Android Usage Access not granted)
-        if (!usageState.isPermissionGranted) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "⚠️ Phone Usage Permission Required",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                    Text(
-                        text = "To display your real on-device screen time and habits, please grant Usage Access in Settings.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(vertical = 6.dp)
-                    )
-                    Button(
-                        onClick = {
-                            context.startActivity(phoneManager.getUsageSettingsIntent())
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Hero total card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Grant Permission")
+                        Text(
+                            text = "TODAY'S SCREEN TIME",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = usageState.phoneTotalFormatted,
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${usageState.appBreakdown.size} apps used today",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
 
-        // Laptop Connection & Sync Bar
-        ConnectionStatusBar(
-            state = usageState,
-            isSyncing = isSyncing,
-            onConfigureIp = {
-                tempIpInput = usageState.laptopHost
-                showIpDialog = true
-            },
-            onSyncNow = {
-                refreshData(triggerNetworkSync = true)
-            }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Lazy scrollable content for metrics, breakdowns, and timeline
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Hero Total Screen Time Card
+            // Category filter chips
             item {
-                HeroDigitalUsageCard(usageState)
-            }
-
-            // Filter Chips
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = selectedFilter == "ALL",
-                        onClick = { selectedFilter = "ALL" },
-                        label = { Text("All Devices") }
-                    )
-                    FilterChip(
-                        selected = selectedFilter == "PHONE",
-                        onClick = { selectedFilter = "PHONE" },
-                        label = { Text("📱 Phone Only") }
-                    )
-                    FilterChip(
-                        selected = selectedFilter == "LAPTOP",
-                        onClick = { selectedFilter = "LAPTOP" },
-                        label = { Text("💻 Laptop Only") }
-                    )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(categories) { cat ->
+                        FilterChip(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            label = { Text(cat) }
+                        )
+                    }
                 }
             }
 
-            // Section 1: App Usage Breakdown
+            // App breakdown header
             item {
                 Text(
-                    text = "App Usage Breakdown",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    text = "App Breakdown",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            val filteredApps = when (selectedFilter) {
-                "PHONE" -> usageState.appBreakdown.filter { it.phoneDurationSeconds > 0 }
-                "LAPTOP" -> usageState.appBreakdown.filter { it.laptopDurationSeconds > 0 }
-                else -> usageState.appBreakdown
+            // App list filtered by category
+            val filteredApps = if (selectedCategory == "All") {
+                usageState.appBreakdown
+            } else {
+                usageState.appBreakdown.filter { it.category == selectedCategory }
             }
 
             if (filteredApps.isEmpty()) {
                 item {
                     Text(
-                        text = "No app usage recorded yet for this view.",
+                        text = "No apps in this category today.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
-                items(filteredApps, key = { "${it.appName}_${it.device}" }) { appItem ->
-                    AppBreakdownCard(appItem, selectedFilter)
+                items(filteredApps, key = { it.appName }) { app ->
+                    AppRow(app, usageState.phoneTotalSeconds)
                 }
             }
 
-            // Section 2: Chronological Timeline
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Chronological Timeline",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    val filteredSessions = when (selectedFilter) {
-                        "PHONE" -> usageState.chronologicalTimeline.filter { it.device == DeviceSource.PHONE }
-                        "LAPTOP" -> usageState.chronologicalTimeline.filter { it.device == DeviceSource.LAPTOP }
-                        else -> usageState.chronologicalTimeline
-                    }
-                    Text(
-                        text = "${filteredSessions.size} sessions",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            val filteredSessions = when (selectedFilter) {
-                "PHONE" -> usageState.chronologicalTimeline.filter { it.device == DeviceSource.PHONE }
-                "LAPTOP" -> usageState.chronologicalTimeline.filter { it.device == DeviceSource.LAPTOP }
-                else -> usageState.chronologicalTimeline
-            }
-
-            if (filteredSessions.isEmpty()) {
-                item {
-                    Text(
-                        text = "No sessions recorded yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                items(filteredSessions, key = { it.id }) { session ->
-                    TimelineSessionCard(session)
-                }
-            }
+            item { Spacer(modifier = Modifier.height(16.dp)) }
         }
-    }
-
-    // IP Configuration Dialog
-    if (showIpDialog) {
-        AlertDialog(
-            onDismissRequest = { showIpDialog = false },
-            title = { Text("Configure Laptop IP") },
-            text = {
-                Column {
-                    Text("Enter the Wi-Fi LAN IP address of your companion laptop running office_kit_bridge.py:")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = tempIpInput,
-                        onValueChange = { tempIpInput = it },
-                        label = { Text("Laptop IP Address") },
-                        placeholder = { Text("e.g. 192.168.1.100 or 10.0.2.2") },
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        laptopManager.setLaptopIp(tempIpInput)
-                        showIpDialog = false
-                        refreshData(triggerNetworkSync = true)
-                    }
-                ) {
-                    Text("Save & Sync")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showIpDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }
 
 @Composable
-fun ConnectionStatusBar(
-    state: UnifiedDigitalUsageState,
-    isSyncing: Boolean,
-    onConfigureIp: () -> Unit,
-    onSyncNow: () -> Unit
-) {
+fun AppRow(item: AppUsageSummaryItem, totalSeconds: Long) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val dotColor = when (state.syncStatus) {
-                        SyncStatus.CONNECTED -> Color(0xFF10B981)
-                        SyncStatus.OFFLINE_USING_CACHE -> Color(0xFFF59E0B)
-                        SyncStatus.SYNCING -> Color(0xFF38BDF8)
-                        else -> Color(0xFF94A3B8)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(dotColor)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    val statusText = when (state.syncStatus) {
-                        SyncStatus.CONNECTED -> "Synced with Laptop"
-                        SyncStatus.OFFLINE_USING_CACHE -> "Laptop Offline (Cached)"
-                        SyncStatus.SYNCING -> "Syncing with Laptop..."
-                        SyncStatus.NOT_CONFIGURED -> "Laptop Not Connected Yet"
-                        SyncStatus.ERROR -> "Sync Error"
-                        SyncStatus.IDLE -> "Laptop Idle"
-                    }
-                    Text(
-                        text = statusText,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                Text(
-                    text = "Host: ${state.laptopHost}:8089 | Last: ${state.lastSyncTimeFormatted}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clickable { onConfigureIp() }
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(
-                    onClick = onConfigureIp,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("IP", fontSize = 12.sp)
-                }
-
-                Button(
-                    onClick = onSyncNow,
-                    enabled = !isSyncing,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(if (isSyncing) "..." else "Sync", fontSize = 12.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun HeroDigitalUsageCard(state: UnifiedDigitalUsageState) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = "TODAY'S DIGITAL USAGE",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-            )
-
-            Text(
-                text = state.combinedTotalFormatted,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Phone split
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "📱 Phone",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    val phonePct = if (state.combinedTotalSeconds > 0) {
-                        ((state.phoneTotalSeconds.toDouble() / state.combinedTotalSeconds) * 100).toInt()
-                    } else 0
-                    Text(
-                        text = "${state.phoneTotalFormatted} ($phonePct%)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-
-                // Laptop split
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "💻 Laptop",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    val laptopPct = if (state.combinedTotalSeconds > 0) {
-                        ((state.laptopTotalSeconds.toDouble() / state.combinedTotalSeconds) * 100).toInt()
-                    } else 0
-                    Text(
-                        text = "${state.laptopTotalFormatted} ($laptopPct%)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AppBreakdownCard(item: AppUsageSummaryItem, filter: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.appName,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleSmall
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Category colour dot
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(categoryColor(item.category))
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CategoryBadge(item.category)
-                        DeviceBadge(item.device)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = item.appName,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = item.category,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    val displayDuration = when (filter) {
-                        "PHONE" -> UsageFormatUtils.formatDuration(item.phoneDurationSeconds)
-                        "LAPTOP" -> UsageFormatUtils.formatDuration(item.laptopDurationSeconds)
-                        else -> item.formattedTime
-                    }
-                    Text(
-                        text = displayDuration,
-                        fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "${item.percentage}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    text = item.formattedTime,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             LinearProgressIndicator(
-                progress = { (item.percentage / 100f).coerceIn(0f, 1f) },
+                progress = {
+                    if (totalSeconds > 0) (item.durationSeconds.toFloat() / totalSeconds).coerceIn(0f, 1f) else 0f
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = categoryColor(item.category),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
         }
     }
 }
 
-@Composable
-fun TimelineSessionCard(session: AppUsageSession) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(12.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = session.timeStr,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                DeviceBadge(session.device)
-                Column {
-                    Text(
-                        text = session.appName,
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    CategoryBadge(session.appCategory)
-                }
-            }
-
-            Text(
-                text = session.formattedTime,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-fun DeviceBadge(device: DeviceSource) {
-    val (bgColor, textColor, label) = when (device) {
-        DeviceSource.PHONE -> Triple(Color(0xFFE0F2FE), Color(0xFF0369A1), "📱 Phone")
-        DeviceSource.LAPTOP -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "💻 Laptop")
-        DeviceSource.COMBINED -> Triple(Color(0xFFEDE9FE), Color(0xFF6D28D9), "📱+💻 Dual")
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(bgColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
+fun categoryColor(category: String): Color = when (category) {
+    "Productivity"  -> Color(0xFF10B981)
+    "Communication" -> Color(0xFF6366F1)
+    "Entertainment" -> Color(0xFFEC4899)
+    "Social"        -> Color(0xFFF59E0B)
+    "Utility"       -> Color(0xFF64748B)
+    else            -> Color(0xFF94A3B8)
 }
 
 @Composable
 fun CategoryBadge(category: String) {
     val (bgColor, textColor) = when (category) {
-        "Productivity" -> Pair(Color(0xFFDCFCE7), Color(0xFF15803D))
+        "Productivity"  -> Pair(Color(0xFFDCFCE7), Color(0xFF15803D))
         "Communication" -> Pair(Color(0xFFE0E7FF), Color(0xFF4338CA))
         "Entertainment" -> Pair(Color(0xFFFCE7F3), Color(0xFFBE185D))
-        "Social" -> Pair(Color(0xFFFFEDD5), Color(0xFFC2410C))
-        "Utility" -> Pair(Color(0xFFF3F4F6), Color(0xFF4B5563))
-        else -> Pair(Color(0xFFF1F5F9), Color(0xFF64748B))
+        "Social"        -> Pair(Color(0xFFFFEDD5), Color(0xFFC2410C))
+        "Utility"       -> Pair(Color(0xFFF3F4F6), Color(0xFF4B5563))
+        else            -> Pair(Color(0xFFF1F5F9), Color(0xFF64748B))
     }
-
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
             .background(bgColor)
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
-        Text(
-            text = category,
-            color = textColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Text(text = category, color = textColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }

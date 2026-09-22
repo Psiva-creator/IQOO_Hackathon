@@ -318,13 +318,13 @@ fun ProductivityApp() {
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        text = "📱 Digital Wellbeing & Screen Time",
+                                        text = "📱 Screen Time",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "Tap to view phone & laptop usage timeline",
+                                        text = "Tap to view today's app usage",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.outline
                                     )
