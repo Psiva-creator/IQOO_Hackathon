@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iQOO 15 — Unified Productivity AI (Single Phone UI)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>iQOO 15 — Unified Productivity AI</title>
     <style>
         :root {
             --iqoo-yellow: #facc15;
@@ -24,34 +24,36 @@
             margin: 0;
             padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
             background: #06080e;
             color: var(--text-main);
             min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 24px;
         }
 
         .container {
             display: flex;
             flex-direction: row;
-            gap: 40px;
+            gap: 36px;
             align-items: flex-start;
             max-width: 1240px;
             width: 100%;
         }
 
-        /* Phone Mockup Frame */
+        /* Phone Container (Desktop vs Mobile Responsive) */
         .phone-wrapper {
             position: relative;
-            width: 400px;
-            height: 840px;
-            background: #020408;
-            border-radius: 48px;
+            width: 410px;
+            height: 860px;
+            background: #090d16;
+            border-radius: 46px;
             box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 8px #1e293b, 0 0 0 10px #0f172a;
             border: 4px solid #334155;
             overflow: hidden;
@@ -60,7 +62,7 @@
             flex-shrink: 0;
         }
 
-        /* Punch Hole Camera */
+        /* Hardware elements visible ONLY on desktop preview */
         .punch-hole {
             position: absolute;
             top: 14px;
@@ -74,7 +76,6 @@
             box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
         }
 
-        /* Status Bar */
         .status-bar {
             height: 38px;
             padding: 10px 24px 0 24px;
@@ -86,6 +87,7 @@
             color: #cbd5e1;
             z-index: 40;
             background: #0f172a;
+            flex-shrink: 0;
         }
 
         .status-icons {
@@ -96,17 +98,19 @@
 
         /* App Bar */
         .app-bar {
-            height: 54px;
+            height: 56px;
             background: #0f172a;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 20px;
+            padding: 0 16px;
             border-bottom: 1px solid #1e293b;
+            flex-shrink: 0;
+            z-index: 40;
         }
 
         .app-bar h1 {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
             color: #f8fafc;
             display: flex;
@@ -133,21 +137,38 @@
             font-weight: 600;
         }
 
+        .demo-btn-pill {
+            background: rgba(56, 189, 248, 0.12);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .demo-btn-pill:hover {
+            background: rgba(56, 189, 248, 0.25);
+        }
+
         /* Screen Container */
         .screen-content {
             flex: 1;
             overflow-y: auto;
-            padding: 18px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            background: #0b1120;
+            gap: 14px;
+            background: #090d16;
             position: relative;
+            -webkit-overflow-scrolling: touch;
         }
 
         /* Phone Bottom Navigation Bar */
         .phone-bottom-nav {
-            height: 62px;
+            height: 64px;
             background: #0f172a;
             border-top: 1px solid #1e293b;
             display: flex;
@@ -168,7 +189,7 @@
             justify-content: center;
             gap: 3px;
             cursor: pointer;
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 10px;
             transition: all 0.2s;
             flex: 1;
@@ -180,19 +201,19 @@
         }
 
         .p-nav-icon {
-            font-size: 18px;
+            font-size: 19px;
             line-height: 1;
         }
 
         .p-nav-label {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
             letter-spacing: 0.2px;
         }
 
         /* Card Styles */
         .card {
-            background: #131c31;
+            background: #111827;
             border: 1px solid #1e293b;
             border-radius: 14px;
             padding: 16px;
@@ -207,7 +228,7 @@
         }
         .clickable-card:hover {
             border-color: #38bdf8;
-            background: #18233c;
+            background: #172033;
         }
 
         .coach-banner {
@@ -222,12 +243,12 @@
 
         .coach-banner.at-risk {
             border-left-color: var(--danger);
-            background: rgba(239, 68, 68, 0.1);
+            background: rgba(239, 68, 68, 0.12);
         }
 
         .coach-banner.optimal {
             border-left-color: var(--success);
-            background: rgba(16, 185, 129, 0.1);
+            background: rgba(16, 185, 129, 0.12);
         }
 
         .coach-icon {
@@ -236,7 +257,7 @@
 
         .coach-text {
             font-size: 12px;
-            line-height: 1.4;
+            line-height: 1.45;
             color: #e2e8f0;
         }
 
@@ -252,7 +273,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 14px 0;
+            padding: 12px 0;
             position: relative;
         }
 
@@ -308,11 +329,11 @@
         .form-label {
             font-size: 12px;
             color: var(--text-muted);
-            font-weight: 500;
+            font-weight: 600;
         }
 
         .input-text, .select-box {
-            background: #0a0f1d;
+            background: #0d1322;
             border: 1px solid #1e293b;
             color: #fff;
             border-radius: 10px;
@@ -333,8 +354,8 @@
             color: #0b1120;
             border: none;
             border-radius: 10px;
-            padding: 14px;
-            font-size: 14px;
+            padding: 12px 16px;
+            font-size: 13px;
             font-weight: 700;
             cursor: pointer;
             display: flex;
@@ -358,6 +379,7 @@
         .btn-secondary {
             background: #1e293b;
             color: #f8fafc;
+            border: 1px solid #334155;
         }
 
         .btn-secondary:hover {
@@ -411,7 +433,7 @@
         }
 
         .filter-chip {
-            background: #131c31;
+            background: #111827;
             border: 1px solid #1e293b;
             color: #94a3b8;
             font-size: 11px;
@@ -430,7 +452,7 @@
         }
 
         .timeline-item {
-            background: #0f172a;
+            background: #111827;
             border: 1px solid #1e293b;
             border-radius: 10px;
             padding: 10px 12px;
@@ -460,7 +482,7 @@
 
         /* Task Item */
         .task-item {
-            background: #0f172a;
+            background: #111827;
             border: 1px solid #1e293b;
             border-radius: 10px;
             padding: 12px;
@@ -487,9 +509,10 @@
             display: flex;
             gap: 8px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
-        /* Sidebar Info Panel */
+        /* Sidebar Info Panel (Desktop) */
         .sidebar {
             flex: 1;
             display: flex;
@@ -522,7 +545,7 @@
         }
 
         .control-card {
-            background: #131c31;
+            background: #111827;
             padding: 12px;
             border-radius: 10px;
             border: 1px solid #1e293b;
@@ -534,6 +557,7 @@
             color: var(--text-muted);
             display: block;
             margin-bottom: 6px;
+            font-weight: 600;
         }
 
         .arch-diagram {
@@ -567,17 +591,155 @@
             flex-shrink: 0;
         }
 
+        /* Modal Overlays */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .modal-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 18px;
+            padding: 22px;
+            max-width: 480px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .modal-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        .close-btn {
+            background: #1e293b;
+            border: none;
+            color: #94a3b8;
+            font-size: 16px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
         .hidden { display: none !important; }
+
+        /* ========================================================= */
+        /* TRUE MOBILE-FIRST RESPONSIVE ENGINE (Edge-to-Edge Native) */
+        /* ========================================================= */
+        @media (max-width: 768px) {
+            body {
+                padding: 0 !important;
+                margin: 0 !important;
+                background: #090d16 !important;
+                align-items: stretch !important;
+                justify-content: flex-start !important;
+                min-height: 100vh !important;
+                min-height: 100dvh !important;
+                display: block !important;
+                overflow-x: hidden !important;
+            }
+
+            .container {
+                display: block !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                gap: 0 !important;
+            }
+
+            .phone-wrapper {
+                width: 100% !important;
+                max-width: 100% !important;
+                height: 100vh !important;
+                height: 100dvh !important;
+                border: none !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                background: #090d16 !important;
+                display: flex !important;
+                flex-direction: column !important;
+            }
+
+            /* HIDE FAKE PHONE HARDWARE ON REAL PHONES */
+            .punch-hole {
+                display: none !important;
+            }
+
+            .status-bar {
+                display: none !important;
+            }
+
+            .app-bar {
+                position: sticky !important;
+                top: 0 !important;
+                z-index: 100 !important;
+                padding: 0 16px !important;
+                height: 56px !important;
+                background: #0f172a !important;
+                border-bottom: 1px solid #1e293b !important;
+            }
+
+            .screen-content {
+                padding: 16px 16px 85px 16px !important;
+                overflow-y: auto !important;
+                min-height: calc(100vh - 120px) !important;
+            }
+
+            .phone-bottom-nav {
+                position: fixed !important;
+                bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                width: 100% !important;
+                height: calc(62px + env(safe-area-inset-bottom, 0px)) !important;
+                padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)) !important;
+                z-index: 9999 !important;
+                background: #0f172a !important;
+                border-top: 1px solid #1e293b !important;
+                box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6) !important;
+            }
+
+            /* Hide Desktop Sidebar by default on mobile */
+            .sidebar {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- Single Unified iQOO 15 Smartphone Frame -->
+    <!-- Single Unified iQOO 15 Smartphone Interface -->
     <div class="phone-wrapper">
         <div class="punch-hole"></div>
 
-        <!-- Status Bar -->
+        <!-- Desktop Mock Status Bar (Hidden on Mobile) -->
         <div class="status-bar">
             <span id="statusBarTime">09:41</span>
             <div class="status-icons">
@@ -587,10 +749,13 @@
             </div>
         </div>
 
-        <!-- Unified App Bar -->
+        <!-- Unified App Bar with iQOO Branding & Demo Controls -->
         <div class="app-bar">
             <h1>Productivity AI <span class="iqoo-badge">iQOO 15</span></h1>
-            <span class="active-tab-indicator" id="headerTabLabel">Focus</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="active-tab-indicator" id="headerTabLabel">Focus</span>
+                <button class="demo-btn-pill" onclick="openDemoModal()" title="Open Architecture & Demo Controls">⚙️ Demo</button>
+            </div>
         </div>
 
         <!-- SCREEN TAB 1: FOCUS (MainActivity) -->
@@ -600,20 +765,25 @@
                 <span class="badge badge-optimal" id="contextBadge">📍 Home Office</span>
             </div>
 
-            <!-- Onboarding Permission Banner (First-Launch Access) -->
+            <!-- Onboarding Permission Banner -->
             <div id="permBanner" class="card" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.1);">
                 <div style="display: flex; gap: 8px; align-items: flex-start;">
-                    <span style="font-size: 18px;">⚠️</span>
+                    <span style="font-size: 20px;">⚠️</span>
                     <div style="flex: 1;">
                         <div style="font-size: 13px; font-weight: 700; color: #fbbf24;">Usage Access Required for AI</div>
                         <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">
-                            Grant Usage Access in Settings to enable real-time app tracking and cognitive fatigue calculations. 100% on-device & private.
+                            Android requires <strong>Usage Access</strong> in phone settings to track distractions and calculate cognitive fatigue. 100% on-device & private.
                         </div>
                     </div>
                 </div>
-                <button class="btn" style="background: #f59e0b; color: #000; padding: 8px; font-size: 12px; margin-top: 6px; font-weight: bold;" onclick="grantSimulatedPermission()">
-                    ✓ Grant Permission in Settings
-                </button>
+                <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                    <button class="btn" style="background: #f59e0b; color: #000; padding: 8px 12px; font-size: 12px; font-weight: bold; flex: 1;" onclick="handleGrantPermissionClick()">
+                        ⚙️ Open Phone Settings
+                    </button>
+                    <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px; width: auto;" onclick="openPermissionInfoModal()">
+                        ℹ️ Notice
+                    </button>
+                </div>
             </div>
 
             <!-- Dynamic AI Coach Suggestion Banner -->
@@ -632,7 +802,7 @@
                         <span style="font-size: 18px;">📱</span>
                         <div>
                             <div style="font-size: 12px; font-weight: 700; color: #fff;">Digital Wellbeing & Screen Time</div>
-                            <div style="font-size: 11px; color: #94a3b8;">Today: <strong>2h 35m</strong> · 68% Productivity</div>
+                            <div style="font-size: 11px; color: #94a3b8;">Today: <strong id="quickUsageTime">2h 35m</strong> · <span id="quickProdPercent">68%</span> Productivity</div>
                         </div>
                     </div>
                     <span style="font-size: 13px; color: #38bdf8; font-weight: 700;">View →</span>
@@ -650,14 +820,14 @@
             <!-- Task Inputs -->
             <div class="form-group">
                 <label class="form-label">Task Title</label>
-                <input type="text" id="taskTitle" class="input-text" placeholder="e.g. Optimize local SLM prompt" value="Kernel pipeline integration" />
+                <input type="text" id="taskTitle" class="input-text" placeholder="e.g. Optimize local SLM prompt" value="Kernel pipeline integration">
             </div>
 
             <div class="form-group">
-                <label class="form-label">Task Type</label>
+                <label class="form-label">Task Type (Cognitive Classification)</label>
                 <select id="taskType" class="select-box" onchange="onTaskTypeChange()">
-                    <option value="coding" selected>Coding</option>
-                    <option value="writing">Writing</option>
+                    <option value="coding" selected>Coding (High Cognitive)</option>
+                    <option value="writing">Writing (High Abandon Risk)</option>
                     <option value="meeting">Meeting</option>
                     <option value="reading">Reading</option>
                     <option value="planning">Planning</option>
@@ -667,66 +837,55 @@
             </div>
 
             <!-- Start / Stop Button -->
-            <button id="btnToggleTask" class="btn" onclick="toggleTask()">
-                <span>▶ Start Task</span>
+            <button id="btnToggleTimer" class="btn" onclick="toggleFocusTimer()">
+                <span>▶ Start Focus Session</span>
             </button>
 
-            <div id="statusMessage" class="status-msg hidden">Task saved · Habit model updated.</div>
+            <div id="statusMessage" class="status-msg hidden"></div>
         </div>
 
-        <!-- SCREEN TAB 2: INSIGHTS (InsightsScreen.kt) -->
+        <!-- SCREEN TAB 2: INSIGHTS (InsightEngine.kt) -->
         <div id="viewInsights" class="screen-content hidden">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h2 style="font-size: 17px; font-weight: 700;">AI Habit Insights</h2>
-                    <p style="font-size: 11px; color: var(--text-muted);">Calibrated from 42 sessions</p>
-                </div>
-                <span class="badge badge-optimal">High Confidence</span>
+                <h2 style="font-size: 16px; font-weight: 700;">AI Habit Insights</h2>
+                <span class="badge badge-low">Deterministic SLM</span>
             </div>
 
-            <!-- AI Coach Status Card -->
-            <div class="card" style="border-left: 4px solid #38bdf8;">
+            <!-- Cognitive Fatigue Meter -->
+            <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">🤖 On-Device AI Coach</span>
-                    <span class="badge badge-optimal" id="insightsCoachState">OPTIMAL</span>
-                </div>
-                <div style="font-size: 13px; font-weight: 600; color: #fff; margin-top: 4px;" id="insightsCoachTip">
-                    Protect Peak Coding Window: Schedule demanding coding tasks between 09:00 - 11:00 in Home Office.
-                </div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-                    SLM Inference: <span style="color: #38bdf8; font-weight: 600;">MediaPipe / Gemma-2B-INT4 (Fallback active, &lt;1ms)</span>
-                </div>
-            </div>
-
-            <!-- Cognitive Fatigue Meter (0-100) -->
-            <div class="card" style="border-left: 4px solid #f59e0b;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">🔋 Cognitive Fatigue Meter</span>
-                    <span class="badge badge-medium" id="fatigueBadge">55 / 100</span>
+                    <span style="font-size: 12px; font-weight: 700; color: #fff;">Cognitive Fatigue Index</span>
+                    <span class="badge badge-medium" id="fatigueBadge">35 / 100</span>
                 </div>
                 <div class="progress-bar-bg">
-                    <div id="fatigueFill" class="progress-bar-fill" style="width: 55%; background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);"></div>
+                    <div id="fatigueFill" class="progress-bar-fill" style="width: 35%; background: #38bdf8;"></div>
                 </div>
-                <p id="fatigueDesc" style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
-                    Fatigue is MEDIUM (55/100). Completion drops by 50% in afternoon sessions. Take a 15-min walk before 14:00.
+                <div style="font-size: 11px; color: var(--text-muted);" id="fatigueDesc">
+                    Optimal mental stamina. Distraction filter active.
+                </div>
+            </div>
+
+            <!-- SLM Coach Recommendation -->
+            <div class="card" style="border-left: 4px solid #10b981;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">⚡ Coach Evaluation</span>
+                    <span class="badge badge-optimal" id="insightsCoachState">OPTIMAL</span>
+                </div>
+                <p style="font-size: 12px; color: #e2e8f0; line-height: 1.45; margin-top: 4px;" id="insightsCoachTip">
+                    Protect Peak Coding Window: Schedule demanding coding tasks between 09:00 - 11:00 in Home Office.
                 </p>
             </div>
 
-            <!-- Peak Productivity Window -->
-            <div class="card" style="border-left: 4px solid #10b981;">
-                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">🌟 Peak Productivity Window</span>
-                <div style="font-size: 15px; font-weight: 700; color: #34d399;">09:00 - 11:00</div>
-                <p style="font-size: 11px; color: #94a3b8;">100% completion rate for coding tasks scheduled during morning blocks.</p>
+            <!-- Procrastination Risk Pattern Card -->
+            <div class="card" style="border-left: 4px solid #f87171;">
+                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">⚠️ Detected Vulnerability</span>
+                <div style="font-size: 13px; font-weight: 600; color: #fca5a5;">Writing tasks after 3:00 PM</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
+                    Trigger: High screen fatigue + noisy environments correlate with 78% drop in focus completion.
+                </div>
             </div>
 
-            <!-- Procrastination Pattern -->
-            <div class="card" style="border-left: 4px solid #ef4444;">
-                <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">⚠️ Procrastination Pattern</span>
-                <div style="font-size: 13px; font-weight: 600; color: #f87171;">Writing tasks scheduled after 3:00 PM</div>
-                <p style="font-size: 11px; color: #94a3b8;">100% abandon rate observed when writing in noisy environments.</p>
-            </div>
-
-            <!-- Optimal Context -->
+            <!-- Optimal Context Card -->
             <div class="card" style="border-left: 4px solid #818cf8;">
                 <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">📍 Optimal Focus Context</span>
                 <div style="font-size: 13px; font-weight: 600; color: #a5b4fc;">Home Office (100.0% completion across 21 sessions)</div>
@@ -742,26 +901,36 @@
             </div>
         </div>
 
-        <!-- SCREEN TAB 3: DIGITAL SCREEN TIME & APP USAGE (Member 3 AppUsageScreen.kt) -->
+        <!-- SCREEN TAB 3: DIGITAL SCREEN TIME & APP USAGE (Member C AppUsageScreen.kt) -->
         <div id="viewUsage" class="screen-content hidden">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h2 style="font-size: 17px; font-weight: 700;">Digital Screen Time</h2>
-                    <p style="font-size: 11px; color: var(--text-muted);">Real-time UsageStatsManager & Office Kit</p>
+                    <h2 style="font-size: 16px; font-weight: 700;">Digital Screen Time</h2>
+                    <p style="font-size: 11px; color: var(--text-muted);">Real-time UsageStats & Office Kit</p>
                 </div>
                 <span class="badge badge-optimal">Sync Active</span>
             </div>
 
+            <!-- User Actual Usage Management Bar -->
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;" onclick="openCustomUsageModal()">
+                    ➕ Add My Real Apps
+                </button>
+                <button class="btn btn-secondary" style="width: auto; padding: 8px 12px; font-size: 12px;" onclick="resetToSampleUsage()" title="Reset to sample data">
+                    🔄 Reset
+                </button>
+            </div>
+
             <!-- Total Today Usage Card -->
-            <div class="card" style="border-left: 4px solid #38bdf8; background: linear-gradient(135deg, #131c31, #1e293b);">
+            <div class="card" style="border-left: 4px solid #38bdf8; background: linear-gradient(135deg, #111827, #1e293b);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
                         <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Total Screen Time Today</div>
                         <div style="font-size: 26px; font-weight: 800; color: #fff; margin-top: 2px;" id="totalUsageHours">2h 35m</div>
                     </div>
                     <div style="text-align: right;">
-                        <span class="timeline-device-badge phone">📱 Phone: 1h 10m</span>
-                        <div style="margin-top: 4px;"><span class="timeline-device-badge laptop">💻 Laptop: 1h 25m</span></div>
+                        <span class="timeline-device-badge phone" id="phoneUsageBadge">📱 Phone: 1h 10m</span>
+                        <div style="margin-top: 4px;"><span class="timeline-device-badge laptop" id="laptopUsageBadge">💻 Laptop: 1h 25m</span></div>
                     </div>
                 </div>
             </div>
@@ -773,34 +942,34 @@
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
-                            <span style="color: #38bdf8; font-weight: 600;">Productivity (IDE, Chrome, Docs)</span>
-                            <span style="color: #cbd5e1;">68% (1h 45m)</span>
+                            <span style="color: #38bdf8; font-weight: 600;">Productivity</span>
+                            <span style="color: #cbd5e1;" id="catProdText">68% (1h 45m)</span>
                         </div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 68%; background: #38bdf8;"></div></div>
+                        <div class="progress-bar-bg"><div id="catProdBar" class="progress-bar-fill" style="width: 68%; background: #38bdf8;"></div></div>
                     </div>
 
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
-                            <span style="color: #10b981; font-weight: 600;">Communication (Slack, Teams)</span>
-                            <span style="color: #cbd5e1;">16% (25m)</span>
+                            <span style="color: #10b981; font-weight: 600;">Communication</span>
+                            <span style="color: #cbd5e1;" id="catCommText">16% (25m)</span>
                         </div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 16%; background: #10b981;"></div></div>
+                        <div class="progress-bar-bg"><div id="catCommBar" class="progress-bar-fill" style="width: 16%; background: #10b981;"></div></div>
                     </div>
 
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
-                            <span style="color: #f59e0b; font-weight: 600;">Entertainment (YouTube, Spotify)</span>
-                            <span style="color: #cbd5e1;">11% (18m)</span>
+                            <span style="color: #f59e0b; font-weight: 600;">Entertainment</span>
+                            <span style="color: #cbd5e1;" id="catEntText">11% (18m)</span>
                         </div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 11%; background: #f59e0b;"></div></div>
+                        <div class="progress-bar-bg"><div id="catEntBar" class="progress-bar-fill" style="width: 11%; background: #f59e0b;"></div></div>
                     </div>
 
                     <div>
                         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
                             <span style="color: #ef4444; font-weight: 600;">Social (Distraction)</span>
-                            <span style="color: #cbd5e1;">5% (7m)</span>
+                            <span style="color: #cbd5e1;" id="catSocialText">5% (7m)</span>
                         </div>
-                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 5%; background: #ef4444;"></div></div>
+                        <div class="progress-bar-bg"><div id="catSocialBar" class="progress-bar-fill" style="width: 5%; background: #ef4444;"></div></div>
                     </div>
                 </div>
             </div>
@@ -851,13 +1020,13 @@
         </nav>
     </div>
 
-    <!-- Live Simulation Control & Architecture Panel -->
+    <!-- Desktop Info & Simulation Panel -->
     <div class="sidebar">
         <div class="panel">
-            <h2>📱 Unified iQOO 15 Phone UI</h2>
+            <h2>📱 Unified iQOO 15 Phone Experience</h2>
             <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
-                The two separate UIs have been unified into <strong>ONE single cohesive phone experience</strong>:
-                Member 1's Focus Timer & Task History, Member 2's AI Habit Insights, and Member 3's Digital Screen Time & App Usage are all seamlessly accessible via the <strong>bottom navigation bar</strong> on the phone!
+                All 3 team member contributions have been unified into <strong>ONE single cohesive phone application</strong>:
+                Member 1's Focus Timer & Task History, Member 2's AI Habit Insights, and Member 3's Digital Screen Time & App Usage are all seamlessly accessible via the <strong>bottom navigation bar</strong>!
             </p>
 
             <div class="controls-grid" style="margin-top: 14px;">
@@ -930,8 +1099,164 @@
     </div>
 </div>
 
+<!-- MODAL 1: PERMISSION EXPLANATION & NATIVE NOTICE -->
+<div id="permissionNoticeModal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">🛡️ Android Security & Permissions</span>
+            <button class="close-btn" onclick="closePermissionModal()">✕</button>
+        </div>
+
+        <div style="background: rgba(56, 189, 248, 0.1); border-left: 4px solid #38bdf8; padding: 12px; border-radius: 8px; margin-bottom: 14px;">
+            <div style="font-weight: 700; color: #38bdf8; font-size: 13px; margin-bottom: 4px;">Why Chrome/Web cannot read your other apps:</div>
+            <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                Android OS strictly isolates web browsers. Web browsers are <strong>not permitted</strong> to inspect other apps on your phone (like WhatsApp, YouTube, or banking apps) for privacy reasons.
+            </p>
+        </div>
+
+        <div style="font-size: 12px; color: #94a3b8; line-height: 1.6; display: flex; flex-direction: column; gap: 10px;">
+            <div>
+                <strong style="color: #fff;">1. For 100% Real-Time Phone Tracking:</strong><br>
+                Install the native <strong>iQOO Productivity AI Android APK</strong> (`app-ui/` module) directly on your device. The native app has `PACKAGE_USAGE_STATS` access to query your phone's native `UsageStatsManager`.
+            </div>
+            <div>
+                <strong style="color: #fff;">2. In this Mobile Web Client:</strong><br>
+                You can enter your <strong>actual apps & daily hours</strong> using the <em>"Add My Real Apps"</em> button in the Screen Time tab. The AI engine will analyze your personal routine!
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 18px;">
+            <button class="btn btn-secondary" style="flex: 1;" onclick="closePermissionModal(); openCustomUsageModal();">
+                ✏️ Enter My Real Apps
+            </button>
+            <button class="btn" style="flex: 1; background: #f59e0b; color: #000;" onclick="confirmSimulatedPermission()">
+                ✓ Got It, Continue
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 2: CUSTOMIZE MY REAL APP USAGE -->
+<div id="customUsageModal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">📱 Log My Actual App Usage</span>
+            <button class="close-btn" onclick="closeCustomUsageModal()">✕</button>
+        </div>
+
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">
+            Input your actual phone or laptop apps and time spent today. The AI Coach and fatigue meter will adapt to your real routine:
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="form-group">
+                <label class="form-label">App Name</label>
+                <input type="text" id="inputCustomApp" class="input-text" placeholder="e.g. WhatsApp, Instagram, YouTube, VS Code" value="WhatsApp">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Category</label>
+                <select id="inputCustomCategory" class="select-box">
+                    <option value="Communication" selected>Communication (WhatsApp, Slack)</option>
+                    <option value="Productivity">Productivity (IDE, Docs, Work)</option>
+                    <option value="Social">Social Media (Instagram, Twitter/X)</option>
+                    <option value="Entertainment">Entertainment (YouTube, Netflix)</option>
+                    <option value="Utility">Utility (Settings, Clock, Files)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Duration (Minutes)</label>
+                    <input type="number" id="inputCustomDuration" class="input-text" value="35" min="1" max="600">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Device</label>
+                    <select id="inputCustomDevice" class="select-box">
+                        <option value="PHONE" selected>📱 Phone</option>
+                        <option value="LAPTOP">💻 Laptop</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Quick Template Buttons -->
+            <div>
+                <label class="form-label" style="margin-bottom: 6px; display: block;">Quick Add Templates:</label>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="filter-chip" onclick="quickFillApp('WhatsApp', 'Communication', 30, 'PHONE')">WhatsApp (30m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('YouTube', 'Entertainment', 45, 'PHONE')">YouTube (45m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('Instagram', 'Social', 25, 'PHONE')">Instagram (25m)</button>
+                    <button type="button" class="filter-chip" onclick="quickFillApp('VS Code', 'Productivity', 60, 'LAPTOP')">VS Code (60m)</button>
+                </div>
+            </div>
+
+            <button class="btn" style="margin-top: 8px;" onclick="saveCustomAppSession()">
+                ➕ Add to My Screen Time
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 3: MOBILE DEMO & SIMULATION DRAWER -->
+<div id="demoSettingsModal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">⚙️ Architecture & Demo Controls</span>
+            <button class="close-btn" onclick="closeDemoModal()">✕</button>
+        </div>
+
+        <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 12px;">
+            Simulate dynamic Member C hardware signals (location, fatigue, distraction) to observe on-device SLM adaptation:
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label">Simulate Location</label>
+            <select id="modalSimLocation" class="select-box" onchange="syncModalLocation(this.value)">
+                <option value="Home Office" selected>Home Office (Optimal)</option>
+                <option value="Meeting Room">Meeting Room</option>
+                <option value="Cafe">Cafe (Distraction Sensitive)</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label">Continuous Screen Strain</label>
+            <select id="modalSimScreenTime" class="select-box" onchange="syncModalScreenTime(this.value)">
+                <option value="25" selected>25 min (Fresh)</option>
+                <option value="75">75 min (Moderate)</option>
+                <option value="150">150 min (Fatigued / Alert)</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label">Active App Category</label>
+            <select id="modalSimAppCategory" class="select-box" onchange="syncModalApp(this.value)">
+                <option value="Productivity" selected>Productivity (IDE/Docs)</option>
+                <option value="Communication">Communication (Slack/Teams)</option>
+                <option value="Social">Social Media (Distraction)</option>
+            </select>
+        </div>
+
+        <div class="arch-diagram" style="margin-bottom: 16px;">
+            <div class="arch-step">
+                <span class="step-num">1</span>
+                <span><strong>Member C:</strong> Phone UsageStats + Laptop sync</span>
+            </div>
+            <div class="arch-step">
+                <span class="step-num">2</span>
+                <span><strong>Member A:</strong> Jetpack Compose UI & Room DB</span>
+            </div>
+            <div class="arch-step">
+                <span class="step-num">3</span>
+                <span><strong>Member B:</strong> Habit InsightEngine + Local SLM Coach</span>
+            </div>
+        </div>
+
+        <button class="btn btn-secondary" onclick="closeDemoModal()">Close</button>
+    </div>
+</div>
+
 <script>
-    // Initial 42 Seed Tasks
+    // Initial Seed Tasks (Member A + Member B)
     let taskDatabase = [
         { id: "1", title: "Refactor Data Pipeline (Day 1)", type: "coding", duration: 3600, location: "Home Office", priority: "high", completedAt: "Today, 09:15 AM" },
         { id: "2", title: "Implement Unit Tests (Day 1)", type: "coding", duration: 2700, location: "Home Office", priority: "medium", completedAt: "Today, 10:45 AM" },
@@ -942,66 +1267,76 @@
         { id: "7", title: "API Documentation Review", type: "writing", duration: 210, location: "Cafe", priority: "medium", completedAt: "2 days ago, 04:15 PM (Abandoned)" }
     ];
 
-    // Real App Usage Timeline Records (Member C)
-    const usageTimeline = [
-        { app: "Chrome", category: "Productivity", time: "10:00 AM", duration: "25 min", device: "LAPTOP" },
-        { app: "Productivity AI", category: "Productivity", time: "10:30 AM", duration: "45 min", device: "PHONE" },
-        { app: "WhatsApp", category: "Communication", time: "11:15 AM", duration: "12 min", device: "LAPTOP" },
-        { app: "YouTube", category: "Entertainment", time: "11:30 AM", duration: "18 min", device: "LAPTOP" },
-        { app: "Google Docs", category: "Productivity", time: "01:00 PM", duration: "35 min", device: "PHONE" },
-        { app: "Slack", category: "Communication", time: "02:15 PM", duration: "15 min", device: "PHONE" },
-        { app: "Instagram", category: "Social", time: "03:00 PM", duration: "7 min", device: "PHONE" }
+    // Default Seed App Usage Timeline (Member C)
+    const DEFAULT_USAGE = [
+        { app: "Chrome", category: "Productivity", time: "10:00 AM", minutes: 25, device: "LAPTOP" },
+        { app: "Productivity AI", category: "Productivity", time: "10:30 AM", minutes: 45, device: "PHONE" },
+        { app: "WhatsApp", category: "Communication", time: "11:15 AM", minutes: 12, device: "PHONE" },
+        { app: "YouTube", category: "Entertainment", time: "11:30 AM", minutes: 18, device: "PHONE" },
+        { app: "VS Code", category: "Productivity", time: "01:00 PM", minutes: 35, device: "LAPTOP" },
+        { app: "Slack", category: "Communication", time: "02:15 PM", minutes: 13, device: "LAPTOP" },
+        { app: "Instagram", category: "Social", time: "03:10 PM", minutes: 7, device: "PHONE" }
     ];
 
+    // Load or initialize user's real app usage from localStorage
+    let usageTimeline = [];
+    try {
+        const saved = localStorage.getItem('iqoo_user_usage');
+        if (saved) {
+            usageTimeline = JSON.parse(saved);
+        } else {
+            usageTimeline = [...DEFAULT_USAGE];
+        }
+    } catch (e) {
+        usageTimeline = [...DEFAULT_USAGE];
+    }
+
+    let currentScreen = 'focus';
     let currentUsageFilter = 'ALL';
-    let isRunning = false;
+    let timerRunning = false;
     let elapsedSeconds = 0;
     let timerInterval = null;
-    let currentScreen = 'focus';
 
+    // Time update in mock status bar
     function updateClock() {
         const now = new Date();
         const hrs = String(now.getHours()).padStart(2, '0');
         const mins = String(now.getMinutes()).padStart(2, '0');
-        document.getElementById('statusBarTime').innerText = `${hrs}:${mins}`;
+        const el = document.getElementById('statusBarTime');
+        if (el) el.innerText = `${hrs}:${mins}`;
     }
-    setInterval(updateClock, 1000);
+    setInterval(updateClock, 30000);
     updateClock();
 
-    function formatTime(sec) {
-        const m = Math.floor(sec / 60).toString().padStart(2, '0');
-        const s = (sec % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
-    }
-
-    function toggleTask() {
-        const btn = document.getElementById('btnToggleTask');
-        const circle = document.getElementById('timerCircle');
+    // Timer Controls
+    function toggleFocusTimer() {
+        const btn = document.getElementById('btnToggleTimer');
+        const display = document.getElementById('timerDisplay');
         const statusLabel = document.getElementById('timerStatus');
+        const circle = document.getElementById('timerCircle');
         const statusMsg = document.getElementById('statusMessage');
 
-        if (!isRunning) {
-            // START TASK
-            isRunning = true;
-            elapsedSeconds = 0;
+        if (!timerRunning) {
+            timerRunning = true;
             statusMsg.classList.add('hidden');
             circle.classList.add('active');
-            statusLabel.innerText = "Focusing...";
+            statusLabel.innerText = "Focusing";
             btn.className = "btn btn-stop";
-            btn.innerHTML = "<span>⏹ Stop Task</span>";
+            btn.innerHTML = "<span>⏹ Stop Focus Session</span>";
 
             timerInterval = setInterval(() => {
                 elapsedSeconds++;
-                document.getElementById('timerDisplay').innerText = formatTime(elapsedSeconds);
+                const mins = Math.floor(elapsedSeconds / 60);
+                const secs = elapsedSeconds % 60;
+                display.innerText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
             }, 1000);
         } else {
-            // STOP TASK
-            isRunning = false;
+            timerRunning = false;
             clearInterval(timerInterval);
             circle.classList.remove('active');
             statusLabel.innerText = "Completed";
             btn.className = "btn";
-            btn.innerHTML = "<span>▶ Start Task</span>";
+            btn.innerHTML = "<span>▶ Start Focus Session</span>";
 
             const title = document.getElementById('taskTitle').value || "Untitled Focus Session";
             const type = document.getElementById('taskType').value;
@@ -1075,6 +1410,10 @@
         else if (screenTime >= 75) fatigue = 58;
         if (app === 'Social') fatigue += 10;
 
+        updateFatigueUI(fatigue, loc, screenTime);
+    }
+
+    function updateFatigueUI(fatigue, loc, screenTime) {
         document.getElementById('fatigueBadge').innerText = `${fatigue} / 100`;
         document.getElementById('fatigueFill').style.width = `${fatigue}%`;
 
@@ -1138,7 +1477,7 @@
             document.getElementById('viewUsage').classList.remove('hidden');
             document.getElementById('pNavUsage').classList.add('active');
             label.innerText = 'Screen Time';
-            renderUsageTimeline();
+            recalculateAndRenderUsage();
         } else if (screen === 'history') {
             document.getElementById('viewHistory').classList.remove('hidden');
             document.getElementById('pNavHistory').classList.add('active');
@@ -1160,6 +1499,62 @@
         renderUsageTimeline();
     }
 
+    function recalculateAndRenderUsage() {
+        let totalMins = 0;
+        let phoneMins = 0;
+        let laptopMins = 0;
+        let prodMins = 0;
+        let commMins = 0;
+        let entMins = 0;
+        let socialMins = 0;
+
+        usageTimeline.forEach(item => {
+            const m = item.minutes || 15;
+            totalMins += m;
+            if (item.device === 'PHONE') phoneMins += m;
+            else laptopMins += m;
+
+            if (item.category === 'Productivity') prodMins += m;
+            else if (item.category === 'Communication') commMins += m;
+            else if (item.category === 'Entertainment') entMins += m;
+            else if (item.category === 'Social') socialMins += m;
+        });
+
+        const fmt = (m) => `${Math.floor(m / 60)}h ${m % 60}m`;
+        const totalStr = fmt(totalMins);
+
+        document.getElementById('totalUsageHours').innerText = totalStr;
+        document.getElementById('phoneUsageBadge').innerText = `📱 Phone: ${fmt(phoneMins)}`;
+        document.getElementById('laptopUsageBadge').innerText = `💻 Laptop: ${fmt(laptopMins)}`;
+
+        // Update Quick Summary on Focus Tab
+        const quickEl = document.getElementById('quickUsageTime');
+        if (quickEl) quickEl.innerText = totalStr;
+
+        const prodPercent = totalMins > 0 ? Math.round((prodMins / totalMins) * 100) : 0;
+        const commPercent = totalMins > 0 ? Math.round((commMins / totalMins) * 100) : 0;
+        const entPercent = totalMins > 0 ? Math.round((entMins / totalMins) * 100) : 0;
+        const socialPercent = totalMins > 0 ? Math.round((socialMins / totalMins) * 100) : 0;
+
+        const quickProd = document.getElementById('quickProdPercent');
+        if (quickProd) quickProd.innerText = `${prodPercent}%`;
+
+        // Progress bars
+        document.getElementById('catProdText').innerText = `${prodPercent}% (${fmt(prodMins)})`;
+        document.getElementById('catProdBar').style.width = `${prodPercent}%`;
+
+        document.getElementById('catCommText').innerText = `${commPercent}% (${fmt(commMins)})`;
+        document.getElementById('catCommBar').style.width = `${commPercent}%`;
+
+        document.getElementById('catEntText').innerText = `${entPercent}% (${fmt(entMins)})`;
+        document.getElementById('catEntBar').style.width = `${entPercent}%`;
+
+        document.getElementById('catSocialText').innerText = `${socialPercent}% (${fmt(socialMins)})`;
+        document.getElementById('catSocialBar').style.width = `${socialPercent}%`;
+
+        renderUsageTimeline();
+    }
+
     function renderUsageTimeline() {
         const container = document.getElementById('usageTimelineList');
         const filtered = usageTimeline.filter(item => {
@@ -1167,17 +1562,37 @@
             return item.device === currentUsageFilter;
         });
 
-        container.innerHTML = filtered.map(item => `
+        if (filtered.length === 0) {
+            container.innerHTML = `<div style="text-align: center; color: #64748b; padding: 20px; font-size: 13px;">No recorded usage for this filter. Use <strong>"Add My Real Apps"</strong> above to log your apps.</div>`;
+            return;
+        }
+
+        container.innerHTML = filtered.map((item, idx) => `
             <div class="timeline-item">
-                <span style="font-size: 11px; font-weight: 700; color: #64748b; width: 55px;">${item.time}</span>
+                <span style="font-size: 11px; font-weight: 700; color: #64748b; width: 60px;">${item.time || 'Today'}</span>
                 <div style="flex: 1;">
                     <div style="font-size: 13px; font-weight: 600; color: #f1f5f9;">${item.app}</div>
                     <div style="font-size: 11px; color: #94a3b8;">${item.category}</div>
                 </div>
                 <span class="timeline-device-badge ${item.device.toLowerCase()}">${item.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</span>
-                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">${item.duration}</span>
+                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">${item.minutes}m</span>
+                <button style="background: none; border: none; color: #ef4444; font-size: 14px; cursor: pointer; padding: 2px 4px;" onclick="deleteUsageItem(${idx})" title="Delete entry">✕</button>
             </div>
         `).join('');
+    }
+
+    function deleteUsageItem(idx) {
+        usageTimeline.splice(idx, 1);
+        try { localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline)); } catch(e) {}
+        recalculateAndRenderUsage();
+    }
+
+    function resetToSampleUsage() {
+        if (confirm("Reset to default sample usage data?")) {
+            usageTimeline = [...DEFAULT_USAGE];
+            try { localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline)); } catch(e) {}
+            recalculateAndRenderUsage();
+        }
     }
 
     function renderHistoryList() {
@@ -1200,7 +1615,32 @@
         `).join('');
     }
 
-    function grantSimulatedPermission() {
+    // ==========================================
+    // PERMISSION HANDLING & SETTINGS INTENT
+    // ==========================================
+    function handleGrantPermissionClick() {
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+            // Attempt to trigger real Android Settings -> Usage Access page
+            try {
+                window.location.href = "intent:#Intent;action=android.settings.USAGE_ACCESS_SETTINGS;end";
+            } catch (e) {
+                console.log("Could not trigger intent:", e);
+            }
+        }
+        openPermissionInfoModal();
+    }
+
+    function openPermissionInfoModal() {
+        document.getElementById('permissionNoticeModal').classList.remove('hidden');
+    }
+
+    function closePermissionModal() {
+        document.getElementById('permissionNoticeModal').classList.add('hidden');
+    }
+
+    function confirmSimulatedPermission() {
+        closePermissionModal();
         const banner = document.getElementById('permBanner');
         banner.style.borderLeftColor = '#10b981';
         banner.style.background = 'rgba(16, 185, 129, 0.12)';
@@ -1208,7 +1648,7 @@
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 18px;">✅</span>
                 <div>
-                    <div style="font-size: 13px; font-weight: 700; color: #34d399;">Usage Access Permission Granted</div>
+                    <div style="font-size: 13px; font-weight: 700; color: #34d399;">Usage Access Permission Confirmed</div>
                     <div style="font-size: 11px; color: #cbd5e1;">Real-time on-device telemetry and SLM coach active.</div>
                 </div>
             </div>
@@ -1216,9 +1656,84 @@
         setTimeout(() => banner.classList.add('hidden'), 2500);
     }
 
+    // ==========================================
+    // CUSTOM USER APP USAGE DIALOG
+    // ==========================================
+    function openCustomUsageModal() {
+        document.getElementById('customUsageModal').classList.remove('hidden');
+    }
+
+    function closeCustomUsageModal() {
+        document.getElementById('customUsageModal').classList.add('hidden');
+    }
+
+    function quickFillApp(name, category, minutes, device) {
+        document.getElementById('inputCustomApp').value = name;
+        document.getElementById('inputCustomCategory').value = category;
+        document.getElementById('inputCustomDuration').value = minutes;
+        document.getElementById('inputCustomDevice').value = device;
+    }
+
+    function saveCustomAppSession() {
+        const app = document.getElementById('inputCustomApp').value.trim() || "My App";
+        const category = document.getElementById('inputCustomCategory').value;
+        const minutes = parseInt(document.getElementById('inputCustomDuration').value) || 15;
+        const device = document.getElementById('inputCustomDevice').value;
+
+        const now = new Date();
+        const hrs = now.getHours();
+        const mins = String(now.getMinutes()).padStart(2, '0');
+        const ampm = hrs >= 12 ? 'PM' : 'AM';
+        const displayHr = hrs % 12 || 12;
+        const timeStr = `${displayHr}:${mins} ${ampm}`;
+
+        const newEntry = {
+            app: app,
+            category: category,
+            time: timeStr,
+            minutes: minutes,
+            device: device
+        };
+
+        usageTimeline.unshift(newEntry);
+        try {
+            localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline));
+        } catch(e) {}
+
+        closeCustomUsageModal();
+        recalculateAndRenderUsage();
+        showScreen('usage');
+    }
+
+    // ==========================================
+    // DEMO CONTROLS MODAL (FOR MOBILE)
+    // ==========================================
+    function openDemoModal() {
+        document.getElementById('demoSettingsModal').classList.remove('hidden');
+    }
+
+    function closeDemoModal() {
+        document.getElementById('demoSettingsModal').classList.add('hidden');
+    }
+
+    function syncModalLocation(val) {
+        const el = document.getElementById('simLocation');
+        if (el) { el.value = val; onContextSimChange(); }
+    }
+
+    function syncModalScreenTime(val) {
+        const el = document.getElementById('simScreenTime');
+        if (el) { el.value = val; onContextSimChange(); }
+    }
+
+    function syncModalApp(val) {
+        const el = document.getElementById('simAppCategory');
+        if (el) { el.value = val; onContextSimChange(); }
+    }
+
     // Initialize
     renderHistoryList();
-    renderUsageTimeline();
+    recalculateAndRenderUsage();
     onContextSimChange();
 </script>
 
