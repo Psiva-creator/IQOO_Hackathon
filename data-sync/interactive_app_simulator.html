@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iQOO 15 — Productivity AI (Live Combined App)</title>
+    <title>iQOO 15 — Unified Productivity AI (Single Phone UI)</title>
     <style>
         :root {
             --iqoo-yellow: #facc15;
@@ -41,7 +41,7 @@
             flex-direction: row;
             gap: 40px;
             align-items: flex-start;
-            max-width: 1200px;
+            max-width: 1240px;
             width: 100%;
         }
 
@@ -49,7 +49,7 @@
         .phone-wrapper {
             position: relative;
             width: 400px;
-            height: 820px;
+            height: 840px;
             background: #020408;
             border-radius: 48px;
             box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 8px #1e293b, 0 0 0 10px #0f172a;
@@ -60,7 +60,7 @@
             flex-shrink: 0;
         }
 
-        /* Punch Hole Camera & Speaker */
+        /* Punch Hole Camera */
         .punch-hole {
             position: absolute;
             top: 14px;
@@ -106,7 +106,7 @@
         }
 
         .app-bar h1 {
-            font-size: 19px;
+            font-size: 18px;
             font-weight: 700;
             color: #f8fafc;
             display: flex;
@@ -124,6 +124,15 @@
             letter-spacing: 0.5px;
         }
 
+        .active-tab-indicator {
+            font-size: 11px;
+            background: #1e293b;
+            color: #38bdf8;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
         /* Screen Container */
         .screen-content {
             flex: 1;
@@ -136,6 +145,51 @@
             position: relative;
         }
 
+        /* Phone Bottom Navigation Bar */
+        .phone-bottom-nav {
+            height: 62px;
+            background: #0f172a;
+            border-top: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 0 4px;
+            z-index: 45;
+            flex-shrink: 0;
+        }
+
+        .phone-nav-item {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 10px;
+            transition: all 0.2s;
+            flex: 1;
+        }
+
+        .phone-nav-item.active {
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.12);
+        }
+
+        .p-nav-icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .p-nav-label {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
         /* Card Styles */
         .card {
             background: #131c31;
@@ -145,6 +199,15 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+        }
+
+        .clickable-card {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .clickable-card:hover {
+            border-color: #38bdf8;
+            background: #18233c;
         }
 
         .coach-banner {
@@ -189,13 +252,13 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 18px 0;
+            padding: 14px 0;
             position: relative;
         }
 
         .timer-circle {
-            width: 140px;
-            height: 140px;
+            width: 130px;
+            height: 130px;
             border-radius: 50%;
             border: 4px solid #1e293b;
             display: flex;
@@ -220,7 +283,7 @@
         }
 
         .timer-val {
-            font-size: 32px;
+            font-size: 30px;
             font-weight: 700;
             font-variant-numeric: tabular-nums;
             letter-spacing: 1px;
@@ -309,19 +372,18 @@
             padding: 4px;
         }
 
-        /* Fatigue Gauge */
-        .fatigue-bar-bg {
-            height: 10px;
+        /* Progress Bar */
+        .progress-bar-bg {
+            height: 8px;
             background: #1e293b;
-            border-radius: 5px;
+            border-radius: 4px;
             overflow: hidden;
-            margin: 6px 0;
+            margin: 4px 0;
         }
 
-        .fatigue-bar-fill {
+        .progress-bar-fill {
             height: 100%;
-            background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
-            border-radius: 5px;
+            border-radius: 4px;
             transition: width 0.5s ease;
         }
 
@@ -339,6 +401,62 @@
         .badge-medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
         .badge-low { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
         .badge-optimal { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+
+        /* Usage Items */
+        .usage-filter-chips {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .filter-chip {
+            background: #131c31;
+            border: 1px solid #1e293b;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .filter-chip.active {
+            background: #38bdf8;
+            color: #0b1120;
+            border-color: #38bdf8;
+        }
+
+        .timeline-item {
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .timeline-device-badge {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            background: #1e293b;
+            color: #94a3b8;
+        }
+
+        .timeline-device-badge.phone {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+        }
+
+        .timeline-device-badge.laptop {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+        }
 
         /* Task Item */
         .task-item {
@@ -418,30 +536,6 @@
             margin-bottom: 6px;
         }
 
-        .nav-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 14px;
-        }
-
-        .nav-btn {
-            background: #1e293b;
-            color: #e2e8f0;
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-size: 12px;
-            border: 1px solid #334155;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .nav-btn.active, .nav-btn:hover {
-            background: var(--primary);
-            color: #000;
-            font-weight: 600;
-            border-color: var(--primary);
-        }
-
         .arch-diagram {
             background: #090e1a;
             border: 1px dashed #273549;
@@ -479,7 +573,7 @@
 <body>
 
 <div class="container">
-    <!-- Simulated iQOO 15 Smartphone Frame -->
+    <!-- Single Unified iQOO 15 Smartphone Frame -->
     <div class="phone-wrapper">
         <div class="punch-hole"></div>
 
@@ -493,13 +587,13 @@
             </div>
         </div>
 
-        <!-- App Top Bar -->
+        <!-- Unified App Bar -->
         <div class="app-bar">
             <h1>Productivity AI <span class="iqoo-badge">iQOO 15</span></h1>
-            <span style="font-size: 12px; color: #10b981; font-weight: 600;">● Offline SLM</span>
+            <span class="active-tab-indicator" id="headerTabLabel">Focus</span>
         </div>
 
-        <!-- Screen Content: VIEW 1 - FOCUS (MainActivity) -->
+        <!-- SCREEN TAB 1: FOCUS (MainActivity) -->
         <div id="viewFocus" class="screen-content">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h2 style="font-size: 16px; font-weight: 700;">Start a focus task</h2>
@@ -512,6 +606,20 @@
                 <div class="coach-text">
                     <strong id="coachHeader">AI Coach Tip</strong>
                     <span id="coachMessage">Protect your 09:00–11:00 peak focus window for high-cognitive coding.</span>
+                </div>
+            </div>
+
+            <!-- Quick Integrated Context Summary Card -->
+            <div class="card clickable-card" onclick="showScreen('usage')" style="border-left: 4px solid #38bdf8;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 18px;">📱</span>
+                        <div>
+                            <div style="font-size: 12px; font-weight: 700; color: #fff;">Digital Wellbeing & Screen Time</div>
+                            <div style="font-size: 11px; color: #94a3b8;">Today: <strong>2h 35m</strong> · 68% Productivity</div>
+                        </div>
+                    </div>
+                    <span style="font-size: 13px; color: #38bdf8; font-weight: 700;">View →</span>
                 </div>
             </div>
 
@@ -548,40 +656,10 @@
             </button>
 
             <div id="statusMessage" class="status-msg hidden">Task saved · Habit model updated.</div>
-
-            <!-- Navigation to Other Screens -->
-            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
-                <button class="btn btn-secondary" onclick="showScreen('history')">
-                    📜 View Task History (<span id="taskCountLabel">42</span>)
-                </button>
-                <button class="btn btn-secondary" onclick="showScreen('insights')">
-                    📊 View AI Insights
-                </button>
-            </div>
         </div>
 
-        <!-- Screen Content: VIEW 2 - HISTORY (TaskHistory.kt) -->
-        <div id="viewHistory" class="screen-content hidden">
-            <button class="btn btn-secondary" onclick="showScreen('focus')" style="padding: 10px;">
-                ← Back to Start Task
-            </button>
-
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h2 style="font-size: 16px; font-weight: 700;">Task History</h2>
-                <span class="badge badge-low" id="historyTotalBadge">42 Sessions</span>
-            </div>
-
-            <div id="historyList" style="display: flex; flex-direction: column; gap: 10px;">
-                <!-- Filled dynamically by JavaScript -->
-            </div>
-        </div>
-
-        <!-- Screen Content: VIEW 3 - INSIGHTS (InsightsScreen.kt) -->
+        <!-- SCREEN TAB 2: INSIGHTS (InsightsScreen.kt) -->
         <div id="viewInsights" class="screen-content hidden">
-            <button class="btn btn-secondary" onclick="showScreen('focus')" style="padding: 10px;">
-                ← Back to Start Task
-            </button>
-
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <h2 style="font-size: 17px; font-weight: 700;">AI Habit Insights</h2>
@@ -610,8 +688,8 @@
                     <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">🔋 Cognitive Fatigue Meter</span>
                     <span class="badge badge-medium" id="fatigueBadge">55 / 100</span>
                 </div>
-                <div class="fatigue-bar-bg">
-                    <div id="fatigueFill" class="fatigue-bar-fill" style="width: 55%;"></div>
+                <div class="progress-bar-bg">
+                    <div id="fatigueFill" class="progress-bar-fill" style="width: 55%; background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);"></div>
                 </div>
                 <p id="fatigueDesc" style="font-size: 11px; color: #cbd5e1; line-height: 1.4;">
                     Fatigue is MEDIUM (55/100). Completion drops by 50% in afternoon sessions. Take a 15-min walk before 14:00.
@@ -647,23 +725,130 @@
                 </p>
             </div>
         </div>
+
+        <!-- SCREEN TAB 3: DIGITAL SCREEN TIME & APP USAGE (Member 3 AppUsageScreen.kt) -->
+        <div id="viewUsage" class="screen-content hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 style="font-size: 17px; font-weight: 700;">Digital Screen Time</h2>
+                    <p style="font-size: 11px; color: var(--text-muted);">Real-time UsageStatsManager & Office Kit</p>
+                </div>
+                <span class="badge badge-optimal">Sync Active</span>
+            </div>
+
+            <!-- Total Today Usage Card -->
+            <div class="card" style="border-left: 4px solid #38bdf8; background: linear-gradient(135deg, #131c31, #1e293b);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Total Screen Time Today</div>
+                        <div style="font-size: 26px; font-weight: 800; color: #fff; margin-top: 2px;" id="totalUsageHours">2h 35m</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span class="timeline-device-badge phone">📱 Phone: 1h 10m</span>
+                        <div style="margin-top: 4px;"><span class="timeline-device-badge laptop">💻 Laptop: 1h 25m</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category Breakdown Progress Bars -->
+            <div class="card">
+                <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 6px;">Category Distribution</div>
+                
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+                            <span style="color: #38bdf8; font-weight: 600;">Productivity (IDE, Chrome, Docs)</span>
+                            <span style="color: #cbd5e1;">68% (1h 45m)</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 68%; background: #38bdf8;"></div></div>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+                            <span style="color: #10b981; font-weight: 600;">Communication (Slack, Teams)</span>
+                            <span style="color: #cbd5e1;">16% (25m)</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 16%; background: #10b981;"></div></div>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+                            <span style="color: #f59e0b; font-weight: 600;">Entertainment (YouTube, Spotify)</span>
+                            <span style="color: #cbd5e1;">11% (18m)</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 11%; background: #f59e0b;"></div></div>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+                            <span style="color: #ef4444; font-weight: 600;">Social (Distraction)</span>
+                            <span style="color: #cbd5e1;">5% (7m)</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 5%; background: #ef4444;"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Device Filter Chips -->
+            <div class="usage-filter-chips">
+                <button class="filter-chip active" id="chipAll" onclick="filterUsage('ALL')">ALL SESSIONS</button>
+                <button class="filter-chip" id="chipPhone" onclick="filterUsage('PHONE')">📱 PHONE ONLY</button>
+                <button class="filter-chip" id="chipLaptop" onclick="filterUsage('LAPTOP')">💻 LAPTOP ONLY</button>
+            </div>
+
+            <!-- Chronological Session Timeline -->
+            <div id="usageTimelineList" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <!-- SCREEN TAB 4: TASK HISTORY (TaskHistory.kt) -->
+        <div id="viewHistory" class="screen-content hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="font-size: 16px; font-weight: 700;">Task History</h2>
+                <span class="badge badge-low" id="historyTotalBadge">42 Sessions</span>
+            </div>
+
+            <div id="historyList" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <!-- UNIFIED PHONE BOTTOM NAVIGATION BAR -->
+        <nav class="phone-bottom-nav">
+            <button class="phone-nav-item active" id="pNavFocus" onclick="showScreen('focus')">
+                <span class="p-nav-icon">🎯</span>
+                <span class="p-nav-label">Focus</span>
+            </button>
+            <button class="phone-nav-item" id="pNavInsights" onclick="showScreen('insights')">
+                <span class="p-nav-icon">📊</span>
+                <span class="p-nav-label">Insights</span>
+            </button>
+            <button class="phone-nav-item" id="pNavUsage" onclick="showScreen('usage')">
+                <span class="p-nav-icon">📱</span>
+                <span class="p-nav-label">Screen Time</span>
+            </button>
+            <button class="phone-nav-item" id="pNavHistory" onclick="showScreen('history')">
+                <span class="p-nav-icon">📜</span>
+                <span class="p-nav-label">History</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Live Simulation Control & Architecture Panel -->
     <div class="sidebar">
         <div class="panel">
-            <h2>📱 Live iQOO 15 App Simulator</h2>
+            <h2>📱 Unified iQOO 15 Phone UI</h2>
             <p style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
-                This simulator runs the exact combined product architecture from <code style="color: #38bdf8;">app-ui/app/src/main/</code>:
-                <strong>Member A</strong> (Jetpack Compose UI & Room Database), 
-                <strong>Member B</strong> (Kotlin InsightEngine & Personalization Loop), and 
-                <strong>Member C</strong> (Device ContextCapture Signals).
+                The two separate UIs have been unified into <strong>ONE single cohesive phone experience</strong>:
+                Member 1's Focus Timer & Task History, Member 2's AI Habit Insights, and Member 3's Digital Screen Time & App Usage are all seamlessly accessible via the <strong>bottom navigation bar</strong> on the phone!
             </p>
 
-            <div class="nav-buttons">
-                <button class="nav-btn active" id="navFocusBtn" onclick="showScreen('focus')">Focus Screen (Timer & Coach)</button>
-                <button class="nav-btn" id="navHistoryBtn" onclick="showScreen('history')">Task History</button>
-                <button class="nav-btn" id="navInsightsBtn" onclick="showScreen('insights')">AI Habit Insights</button>
+            <div class="controls-grid" style="margin-top: 14px;">
+                <button class="btn btn-secondary" onclick="showScreen('focus')">🎯 Focus Tab</button>
+                <button class="btn btn-secondary" onclick="showScreen('insights')">📊 Insights Tab</button>
+                <button class="btn btn-secondary" onclick="showScreen('usage')">📱 Screen Time Tab</button>
+                <button class="btn btn-secondary" onclick="showScreen('history')">📜 History Tab</button>
             </div>
         </div>
 
@@ -671,7 +856,7 @@
         <div class="panel">
             <h2>📡 Simulated Member C Context Signals</h2>
             <p style="font-size: 12px; color: #94a3b8;">
-                Change device signals below to see the AI Coach and Insights adjust in real-time without cloud connectivity:
+                Change device signals below to see the AI Coach, Fatigue Score, and Screen Time respond in real time:
             </p>
 
             <div class="controls-grid">
@@ -710,23 +895,19 @@
             <div class="arch-diagram">
                 <div class="arch-step">
                     <span class="step-num">1</span>
-                    <span><strong>Member C (ContextCapture.kt):</strong> Reads foreground app category, location, and continuous screen time.</span>
+                    <span><strong>Member C (UsageStatsManager & Bridge):</strong> Captures phone screen time and syncs companion laptop usage.</span>
                 </div>
                 <div class="arch-step">
                     <span class="step-num">2</span>
-                    <span><strong>Member A (Task.kt & Room DB):</strong> Supplies historical task completion records and active session state.</span>
+                    <span><strong>Member A (Task.kt & Room DB):</strong> Stores focus tasks and completed sessions locally.</span>
                 </div>
                 <div class="arch-step">
                     <span class="step-num">3</span>
-                    <span><strong>Member B (InsightEngine.kt):</strong> Evaluates fatigue score (0-100), detects procrastination risks, and computes peak focus windows.</span>
+                    <span><strong>Member B (InsightEngine.kt):</strong> Evaluates fatigue (0-100) and detects procrastination patterns.</span>
                 </div>
                 <div class="arch-step">
                     <span class="step-num">4</span>
-                    <span><strong>Terminal 2 (LocalAIModel.kt):</strong> Generates on-device coaching interventions with zero latency and zero cloud egress.</span>
-                </div>
-                <div class="arch-step">
-                    <span class="step-num">5</span>
-                    <span><strong>Closed Loop (updateUserModel):</strong> Adjusts calibration factors when tasks complete, personalizing subsequent recommendations.</span>
+                    <span><strong>Terminal 2 (Local SLM):</strong> Emits zero-latency coaching recommendations without cloud connectivity.</span>
                 </div>
             </div>
         </div>
@@ -745,7 +926,18 @@
         { id: "7", title: "API Documentation Review", type: "writing", duration: 210, location: "Cafe", priority: "medium", completedAt: "2 days ago, 04:15 PM (Abandoned)" }
     ];
 
-    // State Variables
+    // Real App Usage Timeline Records (Member C)
+    const usageTimeline = [
+        { app: "Chrome", category: "Productivity", time: "10:00 AM", duration: "25 min", device: "LAPTOP" },
+        { app: "Productivity AI", category: "Productivity", time: "10:30 AM", duration: "45 min", device: "PHONE" },
+        { app: "WhatsApp", category: "Communication", time: "11:15 AM", duration: "12 min", device: "LAPTOP" },
+        { app: "YouTube", category: "Entertainment", time: "11:30 AM", duration: "18 min", device: "LAPTOP" },
+        { app: "Google Docs", category: "Productivity", time: "01:00 PM", duration: "35 min", device: "PHONE" },
+        { app: "Slack", category: "Communication", time: "02:15 PM", duration: "15 min", device: "PHONE" },
+        { app: "Instagram", category: "Social", time: "03:00 PM", duration: "7 min", device: "PHONE" }
+    ];
+
+    let currentUsageFilter = 'ALL';
     let isRunning = false;
     let elapsedSeconds = 0;
     let timerInterval = null;
@@ -817,7 +1009,6 @@
             statusMsg.innerText = `Task saved · Habit model updated for [${type}].`;
             statusMsg.classList.remove('hidden');
 
-            // Send sync to Office Kit bridge if available
             fetch('/api/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -863,11 +1054,9 @@
 
         document.getElementById('contextBadge').innerText = `📍 ${loc}`;
 
-        // Dynamic Fatigue & Coach adjustment based on Member C signals
         let fatigue = 35;
         if (screenTime >= 150) fatigue = 82;
         else if (screenTime >= 75) fatigue = 58;
-
         if (app === 'Social') fatigue += 10;
 
         document.getElementById('fatigueBadge').innerText = `${fatigue} / 100`;
@@ -906,30 +1095,77 @@
 
     function showScreen(screen) {
         currentScreen = screen;
+        
+        // Hide all screens
         document.getElementById('viewFocus').classList.add('hidden');
-        document.getElementById('viewHistory').classList.add('hidden');
         document.getElementById('viewInsights').classList.add('hidden');
+        document.getElementById('viewUsage').classList.add('hidden');
+        document.getElementById('viewHistory').classList.add('hidden');
 
-        document.getElementById('navFocusBtn').classList.remove('active');
-        document.getElementById('navHistoryBtn').classList.remove('active');
-        document.getElementById('navInsightsBtn').classList.remove('active');
+        // Reset bottom nav buttons
+        document.getElementById('pNavFocus').classList.remove('active');
+        document.getElementById('pNavInsights').classList.remove('active');
+        document.getElementById('pNavUsage').classList.remove('active');
+        document.getElementById('pNavHistory').classList.remove('active');
+
+        const label = document.getElementById('headerTabLabel');
 
         if (screen === 'focus') {
             document.getElementById('viewFocus').classList.remove('hidden');
-            document.getElementById('navFocusBtn').classList.add('active');
-        } else if (screen === 'history') {
-            document.getElementById('viewHistory').classList.remove('hidden');
-            document.getElementById('navHistoryBtn').classList.add('active');
-            renderHistoryList();
+            document.getElementById('pNavFocus').classList.add('active');
+            label.innerText = 'Focus';
         } else if (screen === 'insights') {
             document.getElementById('viewInsights').classList.remove('hidden');
-            document.getElementById('navInsightsBtn').classList.add('active');
+            document.getElementById('pNavInsights').classList.add('active');
+            label.innerText = 'Insights';
+        } else if (screen === 'usage') {
+            document.getElementById('viewUsage').classList.remove('hidden');
+            document.getElementById('pNavUsage').classList.add('active');
+            label.innerText = 'Screen Time';
+            renderUsageTimeline();
+        } else if (screen === 'history') {
+            document.getElementById('viewHistory').classList.remove('hidden');
+            document.getElementById('pNavHistory').classList.add('active');
+            label.innerText = 'History';
+            renderHistoryList();
         }
+    }
+
+    function filterUsage(filter) {
+        currentUsageFilter = filter;
+        document.getElementById('chipAll').classList.remove('active');
+        document.getElementById('chipPhone').classList.remove('active');
+        document.getElementById('chipLaptop').classList.remove('active');
+
+        if (filter === 'ALL') document.getElementById('chipAll').classList.add('active');
+        else if (filter === 'PHONE') document.getElementById('chipPhone').classList.add('active');
+        else if (filter === 'LAPTOP') document.getElementById('chipLaptop').classList.add('active');
+
+        renderUsageTimeline();
+    }
+
+    function renderUsageTimeline() {
+        const container = document.getElementById('usageTimelineList');
+        const filtered = usageTimeline.filter(item => {
+            if (currentUsageFilter === 'ALL') return true;
+            return item.device === currentUsageFilter;
+        });
+
+        container.innerHTML = filtered.map(item => `
+            <div class="timeline-item">
+                <span style="font-size: 11px; font-weight: 700; color: #64748b; width: 55px;">${item.time}</span>
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; font-weight: 600; color: #f1f5f9;">${item.app}</div>
+                    <div style="font-size: 11px; color: #94a3b8;">${item.category}</div>
+                </div>
+                <span class="timeline-device-badge ${item.device.toLowerCase()}">${item.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</span>
+                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">${item.duration}</span>
+            </div>
+        `).join('');
     }
 
     function renderHistoryList() {
         const container = document.getElementById('historyList');
-        document.getElementById('taskCountLabel').innerText = taskDatabase.length;
         document.getElementById('historyTotalBadge').innerText = `${taskDatabase.length} Sessions`;
 
         container.innerHTML = taskDatabase.map(t => `
@@ -950,6 +1186,7 @@
 
     // Initialize
     renderHistoryList();
+    renderUsageTimeline();
     onContextSimChange();
 </script>
 
