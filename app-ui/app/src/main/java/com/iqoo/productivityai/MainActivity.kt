@@ -232,46 +232,41 @@ fun ProductivityApp() {
                             .padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Onboarding Usage Permission Request Banner
+                        // Simple Screen Time Permission Card
                         if (!hasUsagePermission) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFFFEF3C7)
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
                                 )
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text("⚠️", fontSize = 20.sp)
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "Usage Access Required for AI",
+                                            text = "📱 Screen Time & AI",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF92400E)
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = "Allow access to track real app usage & fatigue",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                                         )
                                     }
-                                    Text(
-                                        text = "To track real app distractions and calculate cognitive fatigue on your iQOO 15, please grant Usage Access in Settings. All telemetry remains 100% on-device.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF78350F)
-                                    )
+                                    Spacer(Modifier.width(8.dp))
                                     Button(
-                                        onClick = {
-                                            phoneManager.openUsageSettings()
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFFD97706)
-                                        )
+                                        onClick = { phoneManager.openUsageSettings() },
+                                        shape = RoundedCornerShape(10.dp)
                                     ) {
-                                        Text("Grant Permission in Settings", color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text("Allow", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
