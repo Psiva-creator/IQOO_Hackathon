@@ -2,13 +2,21 @@ package com.iqoo.productivity.engine
 
 import com.iqoo.productivity.ai.LocalAIModel
 import com.iqoo.productivity.ai.AIModelInput
-import com.iqoo.productivity.ai.AIModelResponse
-import com.iqoo.productivity.model.Task
-import com.iqoo.productivity.model.TaskType
 import java.util.Calendar
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
+
+data class Task(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String = "",
+    val type: String = "coding",
+    val createdAt: Long = System.currentTimeMillis(),
+    val completedAt: Long? = null,
+    val duration: Long = 0L,
+    val location: String = "Home Office",
+    val priority: String = "medium"
+)
 
 object PrivacySanitizer {
     val ALLOWED_TASKS = setOf(
@@ -375,11 +383,11 @@ class InsightEngine(
     }
 
     private fun detectProcrastinationTrigger(): String {
-        val typeTotal = mutableMapOf<TaskType, Int>()
-        val typeFailed = mutableMapOf<TaskType, Int>()
+        val typeTotal = mutableMapOf<String, Int>()
+        val typeFailed = mutableMapOf<String, Int>()
 
         for (task in tasks) {
-            val type = task.type
+            val type = PrivacySanitizer.sanitizeTaskType(task.type)
             typeTotal[type] = (typeTotal[type] ?: 0) + 1
 
             if (task.completedAt == null) {
@@ -387,7 +395,7 @@ class InsightEngine(
             }
         }
 
-        var worstType: TaskType? = null
+        var worstType: String? = null
         var maxFailRate = 0.0
 
         for ((type, total) in typeTotal) {
@@ -400,7 +408,7 @@ class InsightEngine(
         }
 
         return if (worstType != null && maxFailRate >= 0.4) {
-            val typeName = worstType.name.lowercase().replaceFirstChar { it.uppercase() }
+            val typeName = worstType.lowercase().replaceFirstChar { it.uppercase() }
             "$typeName tasks scheduled after 3:00 PM (${(maxFailRate * 100).toInt()}% abandon rate)"
         } else {
             "Low afternoon completion on complex non-routine tasks"
@@ -569,11 +577,12 @@ class InsightEngine(
     }
 
     private fun detectDistractionSensitivity(): DistractionSensitivity {
-        val typeFailures = mutableMapOf<TaskType, Pair<Int, Int>>()
+        val typeFailures = mutableMapOf<String, Pair<Int, Int>>()
         for (task in tasks) {
-            val curr = typeFailures.getOrPut(task.type) { Pair(0, 0) }
+            val type = PrivacySanitizer.sanitizeTaskType(task.type)
+            val curr = typeFailures.getOrPut(type) { Pair(0, 0) }
             val failInc = if (task.completedAt == null) 1 else 0
-            typeFailures[task.type] = Pair(curr.first + 1, curr.second + failInc)
+            typeFailures[type] = Pair(curr.first + 1, curr.second + failInc)
         }
 
         val vulnerable = mutableListOf<String>()
@@ -581,7 +590,7 @@ class InsightEngine(
             if (stats.first >= 2) {
                 val failRate = stats.second.toDouble() / stats.first
                 if (failRate >= 0.40) {
-                    vulnerable.add(type.name.lowercase())
+                    vulnerable.add(type)
                 }
             }
         }
@@ -628,11 +637,12 @@ class InsightEngine(
 
     private fun analyzeTaskTypes(): List<TaskTypeAnalysis> {
         val weights = getRecencyWeights()
-        val tasksByType = mutableMapOf<TaskType, MutableList<Pair<Task, Double>>>()
+        val tasksByType = mutableMapOf<String, MutableList<Pair<Task, Double>>>()
         for (i in tasks.indices) {
             val task = tasks[i]
             val w = weights[i]
-            tasksByType.getOrPut(task.type) { mutableListOf() }.add(Pair(task, w))
+            val type = PrivacySanitizer.sanitizeTaskType(task.type)
+            tasksByType.getOrPut(type) { mutableListOf() }.add(Pair(task, w))
         }
 
         val results = mutableListOf<TaskTypeAnalysis>()
@@ -684,7 +694,7 @@ class InsightEngine(
 
             results.add(
                 TaskTypeAnalysis(
-                    taskType = type.name.lowercase(),
+                    taskType = type,
                     strongestWindow = strongestWindow,
                     completionRate = completionRate,
                     abandonmentRate = abandonRate,
@@ -985,7 +995,7 @@ class InsightEngine(
         }
 
         val totalTasks = tasks.size
-        val typeTasks = tasks.filter { it.type.name.equals(cleanTaskType, ignoreCase = true) }
+        val typeTasks = tasks.filter { PrivacySanitizer.sanitizeTaskType(it.type).equals(cleanTaskType, ignoreCase = true) }
 
         val totalTypeTasks = typeTasks.size
 
@@ -1779,7 +1789,7 @@ fun updateUserModel(
         val tHour = cal.get(Calendar.HOUR_OF_DAY)
         val tLoc = cleanTask.location.ifBlank { cleanContext?.location ?: "Home Office" }
         val tScreen = cleanContext?.screenOnDuration ?: 0L
-        val predRes = prevEngine.predictTaskReadiness(cleanTask.type.name.lowercase(), tHour, tLoc, tScreen)
+        val predRes = prevEngine.predictTaskReadiness(cleanTask.type, tHour, tLoc, tScreen)
         predRes.predictedScore
     } else {
         null
