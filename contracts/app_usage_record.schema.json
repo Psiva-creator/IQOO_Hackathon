@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppUsageRecord",
+  "description": "On-device active foreground application session tracked by Member C",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "integer",
+      "description": "Epoch start timestamp in milliseconds"
+    },
+    "packageName": {
+      "type": "string",
+      "description": "Android application package identifier"
+    },
+    "appName": {
+      "type": "string",
+      "description": "Human readable application name"
+    },
+    "appCategory": {
+      "type": "string",
+      "enum": ["Productivity", "Social", "Entertainment", "Communication", "Utility", "Other"],
+      "description": "One of six contract categories"
+    },
+    "durationSeconds": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "Active session duration in seconds (minimum 2s threshold)"
+    },
+    "formattedTime": {
+      "type": "string",
+      "description": "Human readable duration (e.g. '25 min', '45s')"
+    },
+    "timeStr": {
+      "type": "string",
+      "description": "Local time string (e.g. '10:00')"
+    }
+  },
+  "required": ["timestamp", "packageName", "appName", "appCategory", "durationSeconds"]
+}
