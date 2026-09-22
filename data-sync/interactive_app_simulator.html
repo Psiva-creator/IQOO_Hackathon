@@ -600,6 +600,22 @@
                 <span class="badge badge-optimal" id="contextBadge">📍 Home Office</span>
             </div>
 
+            <!-- Onboarding Permission Banner (First-Launch Access) -->
+            <div id="permBanner" class="card" style="border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.1);">
+                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                    <span style="font-size: 18px;">⚠️</span>
+                    <div style="flex: 1;">
+                        <div style="font-size: 13px; font-weight: 700; color: #fbbf24;">Usage Access Required for AI</div>
+                        <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">
+                            Grant Usage Access in Settings to enable real-time app tracking and cognitive fatigue calculations. 100% on-device & private.
+                        </div>
+                    </div>
+                </div>
+                <button class="btn" style="background: #f59e0b; color: #000; padding: 8px; font-size: 12px; margin-top: 6px; font-weight: bold;" onclick="grantSimulatedPermission()">
+                    ✓ Grant Permission in Settings
+                </button>
+            </div>
+
             <!-- Dynamic AI Coach Suggestion Banner -->
             <div id="coachBanner" class="coach-banner">
                 <div class="coach-icon" id="coachIcon">💡</div>
@@ -1182,6 +1198,22 @@
                 </div>
             </div>
         `).join('');
+    }
+
+    function grantSimulatedPermission() {
+        const banner = document.getElementById('permBanner');
+        banner.style.borderLeftColor = '#10b981';
+        banner.style.background = 'rgba(16, 185, 129, 0.12)';
+        banner.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">✅</span>
+                <div>
+                    <div style="font-size: 13px; font-weight: 700; color: #34d399;">Usage Access Permission Granted</div>
+                    <div style="font-size: 11px; color: #cbd5e1;">Real-time on-device telemetry and SLM coach active.</div>
+                </div>
+            </div>
+        `;
+        setTimeout(() => banner.classList.add('hidden'), 2500);
     }
 
     // Initialize

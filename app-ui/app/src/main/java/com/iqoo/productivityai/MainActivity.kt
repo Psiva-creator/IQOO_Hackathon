@@ -58,8 +58,12 @@ import com.iqoo.productivityai.engine.CoachEvaluation
 import com.iqoo.productivityai.engine.InsightEngine
 import com.iqoo.productivityai.engine.UserModel
 import com.iqoo.productivityai.engine.updateUserModel
-import com.iqoo.productivityai.ui.theme.ProductivityAITheme
 import com.iqoo.productivityai.usage.AppUsageScreen
+import com.iqoo.productivityai.usage.PhoneUsageManager
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -98,6 +102,22 @@ fun ProductivityApp() {
 
     val contextCapture = remember { ContextCapture(context) }
     val localModel = remember { LocalAIModelFactory.getModel(context) }
+
+    val phoneManager = remember { PhoneUsageManager(context) }
+    var hasUsagePermission by remember { mutableStateOf(phoneManager.hasUsagePermission()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasUsagePermission = phoneManager.hasUsagePermission()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     var userModel by remember { mutableStateOf<UserModel?>(null) }
     var activeCoachEval by remember { mutableStateOf<CoachEvaluation?>(null) }
@@ -196,6 +216,51 @@ fun ProductivityApp() {
                             .padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        // Onboarding Usage Permission Request Banner
+                        if (!hasUsagePermission) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFFFEF3C7)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("⚠️", fontSize = 20.sp)
+                                        Text(
+                                            text = "Usage Access Required for AI",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF92400E)
+                                        )
+                                    }
+                                    Text(
+                                        text = "To track real app distractions and calculate cognitive fatigue on your iQOO 15, please grant Usage Access in Settings. All telemetry remains 100% on-device.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF78350F)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            context.startActivity(phoneManager.getUsageSettingsIntent())
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFD97706)
+                                        )
+                                    ) {
+                                        Text("Grant Permission in Settings", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
                         Text(
                             text = "Start a focus task",
                             style = MaterialTheme.typography.headlineSmall,
