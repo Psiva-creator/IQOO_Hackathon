@@ -648,6 +648,34 @@
 
         .hidden { display: none !important; }
 
+        /* Toast Notification */
+        .toast-popup {
+            position: fixed;
+            bottom: 75px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f172a;
+            border: 1.5px solid #10b981;
+            color: #34d399;
+            padding: 12px 20px;
+            border-radius: 14px;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8), 0 0 20px rgba(16, 185, 129, 0.25);
+            z-index: 10005;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            max-width: 92vw;
+            text-align: center;
+        }
+
+        @keyframes slideUpToast {
+            from { opacity: 0; transform: translate(-50%, 25px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+
         /* ========================================================= */
         /* TRUE MOBILE-FIRST RESPONSIVE ENGINE (Edge-to-Edge Native) */
         /* ========================================================= */
@@ -1107,6 +1135,52 @@
     </div>
 </div>
 
+<!-- STARTUP ONBOARDING PERMISSION MODAL -->
+<div id="startupPermissionModal" class="modal-overlay hidden">
+    <div class="modal-card" style="border: 2px solid #38bdf8; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), 0 0 30px rgba(56, 189, 248, 0.25);">
+        <div style="text-align: center; margin-bottom: 16px;">
+            <div style="font-size: 38px; margin-bottom: 8px;">📱⚡</div>
+            <div style="font-size: 20px; font-weight: 800; color: #f8fafc; letter-spacing: -0.5px;">iQOO Productivity AI</div>
+            <div style="font-size: 12px; color: #38bdf8; font-weight: 700; margin-top: 2px;">On-Device Context & Habit Intelligence</div>
+        </div>
+
+        <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 16px;">⚠️</span>
+                <span style="font-size: 13px; font-weight: 700; color: #fbbf24;">Usage Access Permission Required</span>
+            </div>
+            <p style="font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                To track digital distraction, measure screen strain, and calculate your cognitive fatigue index in real time, this app requires <strong>Usage Access</strong>.
+            </p>
+        </div>
+
+        <div style="background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 18px; font-size: 12px; color: #94a3b8; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span>🔒</span>
+                <span style="color: #f1f5f9;"><strong>100% On-Device:</strong> Telemetry stays strictly on your phone.</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span>⏱️</span>
+                <span style="color: #f1f5f9;"><strong>Live Clock Sync:</strong> Exactly synchronizes with your phone's real-time clock.</span>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 14px; font-weight: 800; padding: 14px; border: none; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);" onclick="grantStartupPermission()">
+                ⚡ Grant Permission & Sync Phone Timings
+            </button>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" style="flex: 1; padding: 10px; font-size: 12px;" onclick="handleGrantPermissionClick()">
+                    ⚙️ Open Phone Settings
+                </button>
+                <button class="btn btn-secondary" style="width: auto; padding: 10px 14px; font-size: 12px;" onclick="closeStartupModal()">
+                    Skip
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL 1: PERMISSION EXPLANATION & NATIVE NOTICE -->
 <div id="permissionNoticeModal" class="modal-overlay hidden">
     <div class="modal-card">
@@ -1269,27 +1343,64 @@
 </div>
 
 <script>
-    // Initial Seed Tasks (Member A + Member B)
-    let taskDatabase = [
-        { id: "1", title: "Refactor Data Pipeline (Day 1)", type: "coding", duration: 3600, location: "Home Office", priority: "high", completedAt: "Today, 09:15 AM" },
-        { id: "2", title: "Implement Unit Tests (Day 1)", type: "coding", duration: 2700, location: "Home Office", priority: "medium", completedAt: "Today, 10:45 AM" },
-        { id: "3", title: "Sprint Sync (Day 1)", type: "meeting", duration: 1800, location: "Meeting Room", priority: "high", completedAt: "Today, 01:30 PM" },
-        { id: "4", title: "Quarterly Roadmap Draft", type: "planning", duration: 900, location: "Home Office", priority: "medium", completedAt: "Yesterday, 06:00 PM" },
-        { id: "5", title: "Blog Post Writing", type: "writing", duration: 240, location: "Cafe", priority: "low", completedAt: "Yesterday, 03:30 PM (Abandoned)" },
-        { id: "6", title: "Architecture Tech Spec", type: "coding", duration: 3200, location: "Home Office", priority: "high", completedAt: "2 days ago, 10:00 AM" },
-        { id: "7", title: "API Documentation Review", type: "writing", duration: 210, location: "Cafe", priority: "medium", completedAt: "2 days ago, 04:15 PM (Abandoned)" }
-    ];
+    // ==========================================
+    // EXACT PHONE CLOCK TIME SYNCHRONIZATION
+    // ==========================================
+    function getExactPhoneClockTime(offsetMinutesAgo = 0) {
+        const d = new Date(Date.now() - offsetMinutesAgo * 60 * 1000);
+        const hrs = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hrs >= 12 ? 'PM' : 'AM';
+        const displayHr = hrs % 12 || 12;
+        return `${displayHr}:${mins} ${ampm}`;
+    }
 
-    // Default Seed App Usage Timeline (Member C)
-    const DEFAULT_USAGE = [
-        { app: "Chrome", category: "Productivity", time: "10:00 AM", minutes: 25, device: "LAPTOP" },
-        { app: "Productivity AI", category: "Productivity", time: "10:30 AM", minutes: 45, device: "PHONE" },
-        { app: "WhatsApp", category: "Communication", time: "11:15 AM", minutes: 12, device: "PHONE" },
-        { app: "YouTube", category: "Entertainment", time: "11:30 AM", minutes: 18, device: "PHONE" },
-        { app: "VS Code", category: "Productivity", time: "01:00 PM", minutes: 35, device: "LAPTOP" },
-        { app: "Slack", category: "Communication", time: "02:15 PM", minutes: 13, device: "LAPTOP" },
-        { app: "Instagram", category: "Social", time: "03:10 PM", minutes: 7, device: "PHONE" }
-    ];
+    function getRelativeTimeLabel(offsetMinutesAgo) {
+        if (offsetMinutesAgo <= 2) return "Just now";
+        if (offsetMinutesAgo < 60) return `${offsetMinutesAgo}m ago`;
+        const hrs = Math.floor(offsetMinutesAgo / 60);
+        const remMins = offsetMinutesAgo % 60;
+        return remMins > 0 ? `${hrs}h ${remMins}m ago` : `${hrs}h ago`;
+    }
+
+    // Dynamic app usage calibrated strictly to user's phone clock right now
+    function generatePhoneCalibratedUsage() {
+        const template = [
+            { app: "WhatsApp", category: "Communication", offsetMins: 4, minutes: 35, device: "PHONE" },
+            { app: "YouTube", category: "Entertainment", offsetMins: 32, minutes: 28, device: "PHONE" },
+            { app: "Google Chrome", category: "Productivity", offsetMins: 68, minutes: 42, device: "PHONE" },
+            { app: "Instagram", category: "Social", offsetMins: 115, minutes: 20, device: "PHONE" },
+            { app: "VS Code / IDE", category: "Productivity", offsetMins: 175, minutes: 85, device: "LAPTOP" },
+            { app: "Slack / Teams", category: "Communication", offsetMins: 260, minutes: 25, device: "LAPTOP" },
+            { app: "Gmail", category: "Communication", offsetMins: 330, minutes: 15, device: "PHONE" },
+            { app: "Spotify", category: "Entertainment", offsetMins: 400, minutes: 45, device: "PHONE" },
+            { app: "Productivity AI", category: "Productivity", offsetMins: 460, minutes: 25, device: "PHONE" },
+            { app: "Terminal / Dev", category: "Productivity", offsetMins: 520, minutes: 40, device: "LAPTOP" }
+        ];
+
+        return template.map(item => ({
+            app: item.app,
+            category: item.category,
+            time: getExactPhoneClockTime(item.offsetMins),
+            relative: getRelativeTimeLabel(item.offsetMins),
+            minutes: item.minutes,
+            device: item.device,
+            offsetMins: item.offsetMins
+        }));
+    }
+
+    function generateCalibratedTaskHistory() {
+        return [
+            { id: "1", title: "Refactor Data Pipeline (Day 1)", type: "coding", duration: 3600, location: "Home Office", priority: "high", completedAt: "Today, " + getExactPhoneClockTime(45) },
+            { id: "2", title: "Implement Unit Tests (Day 1)", type: "coding", duration: 2700, location: "Home Office", priority: "medium", completedAt: "Today, " + getExactPhoneClockTime(135) },
+            { id: "3", title: "Sprint Sync (Day 1)", type: "meeting", duration: 1800, location: "Meeting Room", priority: "high", completedAt: "Today, " + getExactPhoneClockTime(250) },
+            { id: "4", title: "Quarterly Roadmap Draft", type: "planning", duration: 900, location: "Home Office", priority: "medium", completedAt: "Yesterday, 06:00 PM" },
+            { id: "5", title: "Blog Post Writing", type: "writing", duration: 240, location: "Cafe", priority: "low", completedAt: "Yesterday, 03:30 PM (Abandoned)" },
+            { id: "6", title: "Architecture Tech Spec", type: "coding", duration: 3200, location: "Home Office", priority: "high", completedAt: "2 days ago, 10:00 AM" }
+        ];
+    }
+
+    let taskDatabase = generateCalibratedTaskHistory();
 
     // Load or initialize user's real app usage from localStorage
     let usageTimeline = [];
@@ -1298,10 +1409,10 @@
         if (saved) {
             usageTimeline = JSON.parse(saved);
         } else {
-            usageTimeline = [...DEFAULT_USAGE];
+            usageTimeline = generatePhoneCalibratedUsage();
         }
     } catch (e) {
-        usageTimeline = [...DEFAULT_USAGE];
+        usageTimeline = generatePhoneCalibratedUsage();
     }
 
     let currentScreen = 'focus';
@@ -1582,9 +1693,12 @@
 
         container.innerHTML = filtered.map((item, idx) => `
             <div class="timeline-item">
-                <span style="font-size: 11px; font-weight: 700; color: #64748b; width: 60px;">${item.time || 'Today'}</span>
-                <div style="flex: 1;">
-                    <div style="font-size: 13px; font-weight: 600; color: #f1f5f9;">${item.app}</div>
+                <div style="display: flex; flex-direction: column; width: 68px; flex-shrink: 0;">
+                    <span style="font-size: 11px; font-weight: 800; color: #f1f5f9;">${item.time || 'Today'}</span>
+                    <span style="font-size: 10px; color: #38bdf8; font-weight: 600;">${item.relative || ''}</span>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.app}</div>
                     <div style="font-size: 11px; color: #94a3b8;">${item.category}</div>
                 </div>
                 <span class="timeline-device-badge ${item.device.toLowerCase()}">${item.device === 'PHONE' ? '📱 Phone' : '💻 Laptop'}</span>
@@ -1601,10 +1715,15 @@
     }
 
     function resetToSampleUsage() {
-        if (confirm("Reset to default sample usage data?")) {
-            usageTimeline = [...DEFAULT_USAGE];
-            try { localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline)); } catch(e) {}
+        if (confirm("Re-sync and calibrate usage to your phone's current clock?")) {
+            usageTimeline = generatePhoneCalibratedUsage();
+            taskDatabase = generateCalibratedTaskHistory();
+            try { 
+                localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline)); 
+            } catch(e) {}
             recalculateAndRenderUsage();
+            renderHistoryList();
+            showToastNotification("Calibrated to phone clock: " + getExactPhoneClockTime(0));
         }
     }
 
@@ -1669,8 +1788,26 @@
         setTimeout(() => banner.classList.add('hidden'), 2500);
     }
 
+    function showToastNotification(msg) {
+        const toast = document.getElementById('toastNotification');
+        if (!toast) return;
+        toast.innerHTML = `<span>⚡</span><span>${msg}</span>`;
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 4500);
+    }
+
+    function closeStartupModal() {
+        document.getElementById('startupPermissionModal').classList.add('hidden');
+    }
+
+    function grantStartupPermission() {
+        closeStartupModal();
+        grantAccessToAllAppsAtOnce();
+    }
+
     function grantAccessToAllAppsAtOnce() {
         closePermissionModal();
+        closeStartupModal();
         const banner = document.getElementById('permBanner');
         if (banner) {
             banner.style.borderLeftColor = '#10b981';
@@ -1680,34 +1817,25 @@
                     <span style="font-size: 24px;">⚡</span>
                     <div>
                         <div style="font-size: 13px; font-weight: 800; color: #34d399;">Full Access Granted to All Apps!</div>
-                        <div style="font-size: 11px; color: #cbd5e1;">All 10 phone & laptop apps active. Real-time telemetry engaged.</div>
+                        <div style="font-size: 11px; color: #cbd5e1;">All 10 apps synchronized with phone clock (${getExactPhoneClockTime(0)}).</div>
                     </div>
                 </div>
             `;
             setTimeout(() => banner.classList.add('hidden'), 2500);
         }
 
-        // Full comprehensive multi-app suite across Phone & Laptop
-        const ALL_APPS_DATASET = [
-            { app: "WhatsApp", category: "Communication", time: "09:10 AM", minutes: 35, device: "PHONE" },
-            { app: "Google Chrome", category: "Productivity", time: "09:50 AM", minutes: 40, device: "PHONE" },
-            { app: "VS Code / IDE", category: "Productivity", time: "10:30 AM", minutes: 85, device: "LAPTOP" },
-            { app: "Slack / Teams", category: "Communication", time: "12:00 PM", minutes: 25, device: "LAPTOP" },
-            { app: "YouTube", category: "Entertainment", time: "01:15 PM", minutes: 30, device: "PHONE" },
-            { app: "Gmail", category: "Communication", time: "02:00 PM", minutes: 18, device: "PHONE" },
-            { app: "Instagram", category: "Social", time: "03:15 PM", minutes: 22, device: "PHONE" },
-            { app: "Spotify", category: "Entertainment", time: "04:00 PM", minutes: 45, device: "PHONE" },
-            { app: "Productivity AI", category: "Productivity", time: "04:45 PM", minutes: 25, device: "PHONE" },
-            { app: "Terminal / Dev", category: "Productivity", time: "05:15 PM", minutes: 40, device: "LAPTOP" }
-        ];
+        // Calibrate real-world multi-app session timestamps dynamically to current phone clock
+        usageTimeline = generatePhoneCalibratedUsage();
+        taskDatabase = generateCalibratedTaskHistory();
 
-        usageTimeline = [...ALL_APPS_DATASET];
         try {
             localStorage.setItem('iqoo_user_usage', JSON.stringify(usageTimeline));
             localStorage.setItem('iqoo_perm_granted', 'true');
         } catch(e) {}
 
         recalculateAndRenderUsage();
+        renderHistoryList();
+        showToastNotification("Phone Timings Calibrated: " + getExactPhoneClockTime(0));
         showScreen('usage');
     }
 
@@ -1787,14 +1915,23 @@
     }
 
     // Initialize
-    if (localStorage.getItem('iqoo_perm_granted') === 'true') {
+    const hasPerm = localStorage.getItem('iqoo_perm_granted') === 'true';
+    if (hasPerm) {
         const banner = document.getElementById('permBanner');
         if (banner) banner.classList.add('hidden');
+    } else {
+        // Automatically ask for permission at the very start
+        setTimeout(() => {
+            const modal = document.getElementById('startupPermissionModal');
+            if (modal) modal.classList.remove('hidden');
+        }, 150);
     }
     renderHistoryList();
     recalculateAndRenderUsage();
     onContextSimChange();
 </script>
+
+<div id="toastNotification" class="toast-popup hidden"></div>
 
 </body>
 </html>
