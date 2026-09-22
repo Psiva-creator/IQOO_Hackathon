@@ -48,11 +48,66 @@ class PhoneUsageManager(private val context: Context) {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
+
     /**
-     * Creates an intent to navigate the user directly to the Android Settings page for Usage Access.
+     * Returns an ordered list of intents to open Usage Access settings.
+     * Try each in order until one resolves — iQOO/vivo needs the package URI form.
+     * Call openUsageSettings(context) instead of using this directly.
      */
+    fun getUsageSettingsIntents(): List<Intent> {
+        val pkg = context.packageName
+        return listOf(
+            // Android 10+ — opens directly to this app's Usage Access toggle
+            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:$pkg")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // Standard — opens the Usage Access list (user taps the app)
+            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // iQOO/vivo specific path via component
+            Intent().apply {
+                setClassName(
+                    "com.android.settings",
+                    "com.android.settings.Settings\$UsageAccessSettingsActivity"
+                )
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // Last resort — general Settings
+            Intent(Settings.ACTION_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        )
+    }
+
+    /**
+     * Opens Usage Access settings page. Tries multiple intents until one works.
+     */
+    fun openUsageSettings() {
+        for (intent in getUsageSettingsIntents()) {
+            try {
+                if (intent.resolveActivity(context.packageManager) != null ||
+                    intent.action == Settings.ACTION_SETTINGS) {
+                    context.startActivity(intent)
+                    return
+                }
+            } catch (_: Exception) { }
+        }
+        // Absolute fallback
+        try {
+            context.startActivity(
+                Intent(Settings.ACTION_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+            )
+        } catch (_: Exception) { }
+    }
+
+    /** Legacy single-intent getter kept for compatibility. */
     fun getUsageSettingsIntent(): Intent {
         return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+            data = android.net.Uri.parse("package:${context.packageName}")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
     }

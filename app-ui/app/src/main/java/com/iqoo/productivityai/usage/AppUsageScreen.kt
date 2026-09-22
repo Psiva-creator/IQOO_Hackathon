@@ -23,8 +23,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,113 +39,178 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
 
 /**
  * Phone-only Screen Time dashboard.
- * Reads exact per-app screen time from Android's UsageStatsManager (same source as Digital Wellbeing).
- * Shows a simple "Allow Access" screen when permission is not yet granted.
+ * Auto-refreshes permission state when user returns from Settings.
  */
 @Composable
 fun AppUsageScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     val phoneManager = remember { PhoneUsageManager(context) }
 
     var isPermissionGranted by remember { mutableStateOf(phoneManager.hasUsagePermission()) }
-    var usageState by remember {
-        mutableStateOf(
-            UnifiedDigitalUsageState(isPermissionGranted = phoneManager.hasUsagePermission())
-        )
-    }
+    var usageState by remember { mutableStateOf(UnifiedDigitalUsageState()) }
     var selectedCategory by rememberSaveable { mutableStateOf("All") }
+    var isLoading by remember { mutableStateOf(false) }
 
     val categories = listOf("All", "Productivity", "Communication", "Entertainment", "Social", "Utility")
 
     fun loadData() {
         coroutineScope.launch {
+            isLoading = true
             val hasPerm = phoneManager.hasUsagePermission()
             isPermissionGranted = hasPerm
-            if (!hasPerm) return@launch
-            val sessions = phoneManager.getTodayPhoneSessions()
-            usageState = UnifiedUsageAggregator.aggregate(
-                phoneSessions = sessions,
-                laptopSessions = emptyList(),
-                syncStatus = SyncStatus.IDLE,
-                lastSyncTimestamp = 0L,
-                laptopHost = "",
-                isPermissionGranted = hasPerm,
-                statusMessage = ""
-            )
+            if (hasPerm) {
+                val sessions = phoneManager.getTodayPhoneSessions()
+                usageState = UnifiedUsageAggregator.aggregate(
+                    phoneSessions = sessions,
+                    laptopSessions = emptyList(),
+                    syncStatus = SyncStatus.IDLE,
+                    lastSyncTimestamp = 0L,
+                    laptopHost = "",
+                    isPermissionGranted = true,
+                    statusMessage = ""
+                )
+            }
+            isLoading = false
         }
+    }
+
+    // Re-check permission every time the screen comes back to foreground
+    // (user returns from Settings after granting access)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                loadData()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(Unit) { loadData() }
 
-    // — Simple full-screen allow prompt if permission not granted —
+    // ── Permission not granted: show clear step-by-step guide ──
     if (!isPermissionGranted) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("📱", fontSize = 56.sp, textAlign = TextAlign.Center)
-            Spacer(modifier = Modifier.height(20.dp))
-            Text(
-                text = "Allow Screen Time Access",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "Productivity AI needs permission to read your app usage so it can show your real screen time — exactly as Android Digital Wellbeing does.\n\nAll data stays 100% on your phone.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(28.dp))
-            Button(
-                onClick = { context.startActivity(phoneManager.getUsageSettingsIntent()) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) {
+            item {
+                Spacer(Modifier.height(24.dp))
+                Text("📱", fontSize = 56.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Allow in Settings",
+                    "One-time Permission Needed",
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "To show your exact app screen time, grant Usage Access once. " +
+                    "This is the same permission Android Digital Wellbeing uses.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = onBack,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            ) {
-                Text("Back")
+
+            // Primary button — tries to open directly to the toggle
+            item {
+                Button(
+                    onClick = { phoneManager.openUsageSettings() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        "Open Usage Access Settings",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+
+            // Manual path — shown always so user can navigate manually if button fails
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "📍 If the button doesn't open the right page, go manually:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        StepRow("1", "Open phone  Settings  app")
+                        StepRow("2", "Tap  Apps  (or  Applications )")
+                        StepRow("3", "Tap  Special App Access")
+                        StepRow("4", "Tap  Usage Access")
+                        StepRow("5", "Find  Productivity AI  → tap it")
+                        StepRow("6", "Turn on the toggle → come back here")
+                    }
+                }
+            }
+
+            // After granting — user taps this
+            item {
+                OutlinedButton(
+                    onClick = { loadData() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("✅  I've Allowed — Load My Screen Time",
+                        fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            item {
+                Button(
+                    onClick = onBack,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) { Text("Back") }
+                Spacer(Modifier.height(24.dp))
             }
         }
         return
     }
 
-    // — Main screen time dashboard —
+    // ── Main screen time dashboard ──
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Header row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -153,18 +220,18 @@ fun AppUsageScreen(onBack: () -> Unit) {
                 Text("← Back")
             }
             Text(
-                text = "📱 Screen Time",
+                "📱 Screen Time",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             Button(
                 onClick = { loadData() },
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
-            ) {
-                Text("Refresh")
-            }
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            ) { Text(if (isLoading) "..." else "Refresh") }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -173,33 +240,34 @@ fun AppUsageScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Hero total card
+            // Hero total
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "TODAY'S SCREEN TIME",
+                            "TODAY'S SCREEN TIME",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            text = usageState.phoneTotalFormatted,
+                            usageState.phoneTotalFormatted,
                             style = MaterialTheme.typography.displaySmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "${usageState.appBreakdown.size} apps used today",
+                            "${usageState.appBreakdown.size} apps used today",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )
@@ -220,27 +288,22 @@ fun AppUsageScreen(onBack: () -> Unit) {
                 }
             }
 
-            // App breakdown header
             item {
                 Text(
-                    text = "App Breakdown",
+                    "App Breakdown",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // App list filtered by category
-            val filteredApps = if (selectedCategory == "All") {
-                usageState.appBreakdown
-            } else {
-                usageState.appBreakdown.filter { it.category == selectedCategory }
-            }
+            val filteredApps = if (selectedCategory == "All") usageState.appBreakdown
+                               else usageState.appBreakdown.filter { it.category == selectedCategory }
 
             if (filteredApps.isEmpty()) {
                 item {
                     Text(
-                        text = "No apps in this category today.",
+                        if (isLoading) "Loading..." else "No apps recorded in this category today.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -251,8 +314,25 @@ fun AppUsageScreen(onBack: () -> Unit) {
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(16.dp)) }
+            item { Spacer(Modifier.height(16.dp)) }
         }
+    }
+}
+
+@Composable
+fun StepRow(number: String, text: String) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(number, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        Text(text, style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f))
     }
 }
 
@@ -270,42 +350,35 @@ fun AppRow(item: AppUsageSummaryItem, totalSeconds: Long) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Category colour dot
                     Box(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(androidx.compose.foundation.shape.CircleShape)
                             .background(categoryColor(item.category))
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
                     Column {
-                        Text(
-                            text = item.appName,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = item.category,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(item.appName, fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text(item.category, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Text(
-                    text = item.formattedTime,
+                    item.formattedTime,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(Modifier.height(6.dp))
             LinearProgressIndicator(
                 progress = {
-                    if (totalSeconds > 0) (item.durationSeconds.toFloat() / totalSeconds).coerceIn(0f, 1f) else 0f
+                    if (totalSeconds > 0)
+                        (item.durationSeconds.toFloat() / totalSeconds).coerceIn(0f, 1f)
+                    else 0f
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
+                modifier = Modifier.fillMaxWidth().height(5.dp)
                     .clip(RoundedCornerShape(3.dp)),
                 color = categoryColor(item.category),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -325,7 +398,7 @@ fun categoryColor(category: String): Color = when (category) {
 
 @Composable
 fun CategoryBadge(category: String) {
-    val (bgColor, textColor) = when (category) {
+    val (bg, fg) = when (category) {
         "Productivity"  -> Pair(Color(0xFFDCFCE7), Color(0xFF15803D))
         "Communication" -> Pair(Color(0xFFE0E7FF), Color(0xFF4338CA))
         "Entertainment" -> Pair(Color(0xFFFCE7F3), Color(0xFFBE185D))
@@ -333,12 +406,8 @@ fun CategoryBadge(category: String) {
         "Utility"       -> Pair(Color(0xFFF3F4F6), Color(0xFF4B5563))
         else            -> Pair(Color(0xFFF1F5F9), Color(0xFF64748B))
     }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(bgColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(text = category, color = textColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    Box(modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(bg)
+        .padding(horizontal = 6.dp, vertical = 2.dp)) {
+        Text(category, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }

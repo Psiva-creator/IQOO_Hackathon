@@ -248,7 +248,7 @@ fun ProductivityApp() {
                                     )
                                     Button(
                                         onClick = {
-                                            context.startActivity(phoneManager.getUsageSettingsIntent())
+                                            phoneManager.openUsageSettings()
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(
