@@ -531,15 +531,17 @@ class PhoneUsageManager(private val context: Context) {
         }
 
         fun isSystemPackage(packageName: String, packageManager: PackageManager? = null): Boolean {
+            // Explicit known system packages
             if (SYSTEM_PACKAGES.contains(packageName)) return true
-            // Also filter any package prefixed with vivo/iqoo/bbk system namespaces
-            // that aren't in the explicit list (handles future firmware additions)
+
+            // Filter known OEM system namespaces (NOT com.android.* — Chrome, Play Store etc. live there)
             val lc = packageName.lowercase(Locale.ROOT)
             if (lc.startsWith("com.vivo.") || lc.startsWith("com.iqoo.") ||
-                lc.startsWith("com.bbk.") || lc.startsWith("com.android.") ||
+                lc.startsWith("com.bbk.") ||
                 lc.startsWith("com.qualcomm.") || lc.startsWith("com.qti.") ||
                 lc.startsWith("com.google.android.gms")) return true
-            // Fall back to FLAG_SYSTEM if PackageManager is available
+
+            // Use FLAG_SYSTEM as final arbiter — catches any unlisted OEM service
             if (packageManager != null) {
                 return try {
                     val ai = packageManager.getApplicationInfo(packageName, 0)

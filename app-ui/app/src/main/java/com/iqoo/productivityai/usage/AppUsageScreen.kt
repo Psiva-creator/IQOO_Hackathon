@@ -23,7 +23,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,10 +47,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
 
-/**
- * Phone-only Screen Time dashboard.
- * Auto-refreshes permission state when user returns from Settings.
- */
 @Composable
 fun AppUsageScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -87,13 +82,10 @@ fun AppUsageScreen(onBack: () -> Unit) {
         }
     }
 
-    // Re-check permission every time the screen comes back to foreground
-    // (user returns from Settings after granting access)
+    // Auto-reload when user returns from Settings after granting permission
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                loadData()
-            }
+            if (event == Lifecycle.Event.ON_RESUME) loadData()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -101,129 +93,51 @@ fun AppUsageScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) { loadData() }
 
-    // ── Permission not granted: show clear step-by-step guide ──
+    // ── Simple permission screen ──
     if (!isPermissionGranted) {
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
-                Spacer(Modifier.height(24.dp))
-                Text("📱", fontSize = 56.sp, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "One-time Permission Needed",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "To show your exact app screen time, grant Usage Access once. " +
-                    "This is the same permission Android Digital Wellbeing uses.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Primary button — tries to open directly to the toggle
-            item {
-                Button(
-                    onClick = { phoneManager.openUsageSettings() },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(
-                        "Open Usage Access Settings",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                }
-            }
-
-            // Manual path — shown always so user can navigate manually if button fails
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            "📍 If the button doesn't open the right page, go manually:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        StepRow("1", "Open phone  Settings  app")
-                        StepRow("2", "Tap  Apps  (or  Applications )")
-                        StepRow("3", "Tap  Special App Access")
-                        StepRow("4", "Tap  Usage Access")
-                        StepRow("5", "Find  Productivity AI  → tap it")
-                        StepRow("6", "Turn on the toggle → come back here")
-                    }
-                }
-            }
-
-            // After granting — user taps this
-            item {
-                OutlinedButton(
-                    onClick = { loadData() },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("✅  I've Allowed — Load My Screen Time",
-                        fontWeight = FontWeight.SemiBold)
-                }
-            }
-
-            item {
-                Button(
-                    onClick = onBack,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) { Text("Back") }
-                Spacer(Modifier.height(24.dp))
+            Text("📱", fontSize = 64.sp)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Allow Screen Time Access",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Go to Settings → Apps → Special App Access → Usage Access → Productivity AI → Allow",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(28.dp))
+            Button(
+                onClick = { phoneManager.openUsageSettings() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Open Settings", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
         return
     }
 
-    // ── Main screen time dashboard ──
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
+    // ── Screen time dashboard ──
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(onClick = onBack, shape = RoundedCornerShape(10.dp)) {
-                Text("← Back")
-            }
-            Text(
-                "📱 Screen Time",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Button(onClick = onBack, shape = RoundedCornerShape(10.dp)) { Text("← Back") }
+            Text("📱 Screen Time", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Button(
                 onClick = { loadData() },
                 shape = RoundedCornerShape(10.dp),
@@ -234,19 +148,16 @@ fun AppUsageScreen(onBack: () -> Unit) {
             ) { Text(if (isLoading) "..." else "Refresh") }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(Modifier.height(14.dp))
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Hero total
+        LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+            // Total card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
@@ -265,17 +176,16 @@ fun AppUsageScreen(onBack: () -> Unit) {
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "${usageState.appBreakdown.size} apps used today",
+                            "${usageState.appBreakdown.size} apps",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
                         )
                     }
                 }
             }
 
-            // Category filter chips
+            // Category chips
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(categories) { cat ->
@@ -297,42 +207,25 @@ fun AppUsageScreen(onBack: () -> Unit) {
                 )
             }
 
-            val filteredApps = if (selectedCategory == "All") usageState.appBreakdown
-                               else usageState.appBreakdown.filter { it.category == selectedCategory }
+            val filtered = if (selectedCategory == "All") usageState.appBreakdown
+                           else usageState.appBreakdown.filter { it.category == selectedCategory }
 
-            if (filteredApps.isEmpty()) {
+            if (filtered.isEmpty()) {
                 item {
                     Text(
-                        if (isLoading) "Loading..." else "No apps recorded in this category today.",
+                        if (isLoading) "Loading..." else "No apps recorded yet.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
-                items(filteredApps, key = { it.appName }) { app ->
+                items(filtered, key = { it.appName }) { app ->
                     AppRow(app, usageState.phoneTotalSeconds)
                 }
             }
 
             item { Spacer(Modifier.height(16.dp)) }
         }
-    }
-}
-
-@Composable
-fun StepRow(number: String, text: String) {
-    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.primary),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(number, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-        Text(text, style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f))
     }
 }
 
@@ -351,12 +244,11 @@ fun AppRow(item: AppUsageSummaryItem, totalSeconds: Long) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier
-                            .size(10.dp)
+                        modifier = Modifier.size(10.dp)
                             .clip(androidx.compose.foundation.shape.CircleShape)
                             .background(categoryColor(item.category))
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(10.dp))
                     Column {
                         Text(item.appName, fontWeight = FontWeight.SemiBold,
                             style = MaterialTheme.typography.bodyMedium)
@@ -364,12 +256,9 @@ fun AppRow(item: AppUsageSummaryItem, totalSeconds: Long) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Text(
-                    item.formattedTime,
-                    fontWeight = FontWeight.Bold,
+                Text(item.formattedTime, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                    style = MaterialTheme.typography.bodyMedium)
             }
             Spacer(Modifier.height(6.dp))
             LinearProgressIndicator(
@@ -378,8 +267,7 @@ fun AppRow(item: AppUsageSummaryItem, totalSeconds: Long) {
                         (item.durationSeconds.toFloat() / totalSeconds).coerceIn(0f, 1f)
                     else 0f
                 },
-                modifier = Modifier.fillMaxWidth().height(5.dp)
-                    .clip(RoundedCornerShape(3.dp)),
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
                 color = categoryColor(item.category),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
